@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http.view import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
 from .const import (
