@@ -115,6 +115,9 @@ class CheckinView(HomeAssistantView):
                     200, request.path, device_id, response_time, nonce, response_body
                 ),
             )
+            if record.mark_configuration_delivered(response_payload["revision"]):
+                await runtime.store.async_save()
+                runtime.coordinator.async_update_listeners()
             return web.Response(
                 body=response_body,
                 status=200,

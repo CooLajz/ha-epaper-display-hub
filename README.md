@@ -66,18 +66,21 @@ values and never queries HA entities itself.
 Desired configuration currently includes battery voltage display, automatic OTA, a
 24-hour wake schedule, and partial-refresh count. The desired
 revision advances immediately in Home Assistant, but a sleeping device may not apply
-it until a later wake. The **Configuration pending** binary sensor makes that delay
-visible.
+it until a later wake. The **Configuration pending** binary sensor remains on only
+until the Hub includes the latest revision in a signed check-in response. The applied
+revision remains tracked separately for protocol diagnostics.
 
 The hub calculates the nearest future schedule boundary in Home Assistant's timezone
 and returns `server_time`, `next_wake_at`, and authoritative `sleep_seconds`. The
 **Next wake** and **Last planned interval** sensors expose the same persisted plan;
 availability remains true until two minutes after the expected wake time.
 
-Telemetry is not restored as if it were current. The Recorder keeps history, while
-after a Home Assistant restart the integration waits for a fresh device check-in.
-Only security state, desired/reported revisions, content selection, optional sensor
-capabilities, pending commands, and wake-planning diagnostics are persisted.
+The latest known entity values are persisted and restored after a Home Assistant
+restart, so sleeping displays do not temporarily become `unknown`. The persisted
+last-contact timestamp makes the age of those values explicit; new check-ins replace
+them atomically. Security state, desired/delivered/reported revisions, content
+selection, optional sensor capabilities, pending commands, and wake-planning
+diagnostics are persisted as well.
 
 ## Security limitations
 

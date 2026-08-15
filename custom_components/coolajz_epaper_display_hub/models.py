@@ -73,12 +73,14 @@ class DeviceRecord:
     reported: dict[str, Any] = field(default_factory=dict)
     reported_revision: int = 0
     applied_revision: int = 0
+    delivered_revision: int = 0
     nonces: list[str] = field(default_factory=list)
     pending_commands: list[dict[str, Any]] = field(default_factory=list)
     capabilities_seen: list[str] = field(default_factory=list)
     last_contact_at: str | None = None
     next_wake_at: str | None = None
     last_planned_interval_seconds: int | None = None
+    last_entity_data: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> DeviceRecord:
@@ -94,6 +96,8 @@ class DeviceRecord:
             if isinstance(stored_desired, Mapping)
             else None
         )
+        desired_revision = max(1, int(data.get("desired_revision", 1)))
+        applied_revision = max(0, int(data.get("applied_revision", 0)))
         return cls(
             device_id=format_device_id(str(data["device_id"])),
             secret=str(data["secret"]),
@@ -101,10 +105,17 @@ class DeviceRecord:
             wake_schedule=normalize_wake_schedule(
                 data.get("wake_schedule", legacy_schedule)
             ),
-            desired_revision=max(1, int(data.get("desired_revision", 1))),
+            desired_revision=desired_revision,
             reported=dict(data.get("reported", {})),
             reported_revision=max(0, int(data.get("reported_revision", 0))),
-            applied_revision=max(0, int(data.get("applied_revision", 0))),
+            applied_revision=applied_revision,
+            delivered_revision=min(
+                desired_revision,
+                max(
+                    applied_revision,
+                    int(data.get("delivered_revision", applied_revision)),
+                ),
+            ),
             nonces=[str(item) for item in data.get("nonces", [])],
             pending_commands=[dict(item) for item in data.get("pending_commands", [])],
             capabilities_seen=[str(item) for item in data.get("capabilities_seen", [])],
@@ -114,6 +125,11 @@ class DeviceRecord:
                 int(data["last_planned_interval_seconds"])
                 if data.get("last_planned_interval_seconds") is not None
                 else None
+            ),
+            last_entity_data=(
+                dict(data["last_entity_data"])
+                if isinstance(data.get("last_entity_data"), Mapping)
+                else {}
             ),
         )
 
@@ -128,18 +144,33 @@ class DeviceRecord:
             "reported": self.reported,
             "reported_revision": self.reported_revision,
             "applied_revision": self.applied_revision,
+            "delivered_revision": self.delivered_revision,
             "nonces": self.nonces,
             "pending_commands": self.pending_commands,
             "capabilities_seen": self.capabilities_seen,
             "last_contact_at": self.last_contact_at,
             "next_wake_at": self.next_wake_at,
             "last_planned_interval_seconds": self.last_planned_interval_seconds,
+            "last_entity_data": self.last_entity_data,
         }
 
     @property
     def configuration_pending(self) -> bool:
-        """Return whether desired config has not been reported as applied."""
+        """Return whether desired config still waits for Hub transmission."""
+        return self.delivered_revision < self.desired_revision
+
+    @property
+    def configuration_application_pending(self) -> bool:
+        """Return whether firmware has not reported the revision as applied."""
         return self.applied_revision < self.desired_revision
+
+    def mark_configuration_delivered(self, revision: int) -> bool:
+        """Record the latest desired revision included in a signed response."""
+        delivered = min(max(0, revision), self.desired_revision)
+        if delivered <= self.delivered_revision:
+            return False
+        self.delivered_revision = delivered
+        return True
 
     def update_desired(self, changes: Mapping[str, Any]) -> bool:
         """Update desired values and increment revision only on a real change."""
@@ -172,6 +203,8 @@ class DeviceRecord:
             revision = int(reported.get("revision", 0))
             self.reported = values
             self.reported_revision = max(self.reported_revision, revision)
+            if revision <= self.desired_revision:
+                self.delivered_revision = max(self.delivered_revision, revision)
             if (
                 bool(reported.get("applied", False))
                 and revision <= self.desired_revision

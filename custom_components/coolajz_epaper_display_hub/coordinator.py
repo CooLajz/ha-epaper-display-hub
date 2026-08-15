@@ -22,6 +22,15 @@ from .store import HubStore
 
 _LOGGER = logging.getLogger(__name__)
 
+_PERSISTED_NUMERIC_TELEMETRY = {
+    "battery_percent",
+    "battery_voltage",
+    "rssi",
+    "active_runtime_ms",
+    "board_temperature",
+    "board_humidity",
+}
+
 
 class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Receive device push updates without polling sleeping displays."""
@@ -37,7 +46,7 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         self.store = store
         self.data = {
-            record.device_id: self._persisted_planning_data(record)
+            record.device_id: self._persisted_device_data(record)
             for record in store.devices.values()
         }
 
@@ -53,13 +62,41 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         return parsed if parsed.tzinfo is not None else None
 
     @classmethod
-    def _persisted_planning_data(cls, record: DeviceRecord) -> dict[str, Any]:
-        """Restore planning diagnostics without restoring transient telemetry."""
+    def _persisted_device_data(cls, record: DeviceRecord) -> dict[str, Any]:
+        """Restore the latest known entity values and planning diagnostics."""
         return {
+            **record.last_entity_data,
             "last_contact": cls._parse_timestamp(record.last_contact_at),
             "next_wake_at": cls._parse_timestamp(record.next_wake_at),
             "last_planned_interval_seconds": record.last_planned_interval_seconds,
         }
+
+    @staticmethod
+    def _entity_data_for_storage(
+        telemetry: Mapping[str, Any], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Keep only bounded primitive values exposed by Hub entities."""
+        persisted: dict[str, Any] = {}
+        for key in _PERSISTED_NUMERIC_TELEMETRY:
+            raw_value = telemetry.get(key)
+            value = optional_number(raw_value)
+            if value is not None:
+                persisted[key] = (
+                    raw_value
+                    if isinstance(raw_value, int | float)
+                    and not isinstance(raw_value, bool)
+                    else value
+                )
+        last_refresh = telemetry.get("last_refresh")
+        if isinstance(last_refresh, str | int | float) and not isinstance(
+            last_refresh, bool
+        ):
+            persisted["last_refresh"] = last_refresh
+        firmware_version = payload.get("firmware_version")
+        if isinstance(firmware_version, str):
+            persisted["firmware_version"] = firmware_version
+        persisted["last_transfer_success"] = True
+        return persisted
 
     @callback
     def device_data(self, device_id: str) -> dict[str, Any]:
@@ -105,6 +142,7 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         record.last_contact_at = now.isoformat()
         record.next_wake_at = planned_wake.isoformat()
         record.last_planned_interval_seconds = sleep_seconds
+        record.last_entity_data = self._entity_data_for_storage(telemetry, payload)
         device_data = {
             **telemetry,
             "last_contact": now,
@@ -140,7 +178,7 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             "desired_config": {
                 "revision": record.desired_revision,
                 "values": dict(record.desired),
-                "pending": record.configuration_pending,
+                "pending": record.configuration_application_pending,
             },
             "content": normalize_content(self.hass, content_config),
             "commands": commands,

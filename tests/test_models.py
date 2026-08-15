@@ -117,12 +117,22 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     record.last_contact_at = "2026-08-15T22:17:03+02:00"
     record.next_wake_at = "2026-08-15T23:00:00+02:00"
     record.last_planned_interval_seconds = 2577
+    record.last_entity_data = {
+        "battery_percent": 81.0,
+        "battery_voltage": 3.912,
+        "last_transfer_success": True,
+    }
     restored = DeviceRecord.from_dict(record.as_dict())
     assert restored.pending_commands == [{"id": "refresh-1", "type": "full_refresh"}]
     assert restored.wake_schedule["22"] == 60
     assert restored.wake_schedule["23"] == 15
     assert restored.next_wake_at == "2026-08-15T23:00:00+02:00"
     assert restored.last_planned_interval_seconds == 2577
+    assert restored.last_entity_data == record.last_entity_data
+    assert restored.configuration_pending
+    assert restored.mark_configuration_delivered(revision)
+    assert not restored.configuration_pending
+    assert restored.configuration_application_pending
     restored.apply_reported(
         {
             "reported_config": {
@@ -132,7 +142,8 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
             }
         }
     )
-    assert restored.configuration_pending
+    assert not restored.configuration_pending
+    assert restored.configuration_application_pending
     restored.apply_reported(
         {
             "reported_config": {
@@ -143,6 +154,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
         }
     )
     assert not restored.configuration_pending
+    assert not restored.configuration_application_pending
 
 
 def test_legacy_web_enabled_is_removed_from_stored_desired_config() -> None:

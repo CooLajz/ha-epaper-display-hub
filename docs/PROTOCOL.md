@@ -431,11 +431,14 @@ after missing that deadline and returns automatically on its next successful che
 
 - `desired_config.revision` increments only when Home Assistant changes a desired
   value.
-- A returned revision means “delivered,” not “applied.”
+- The Hub records a revision as delivered when it has prepared the successful signed
+  check-in response containing that revision. The **Configuration pending** entity
+  represents this transfer state and clears in the same wake cycle.
 - Firmware reports the revision it has stored, plus `applied: true` only after all
   values in that revision are actually active.
-- Home Assistant marks configuration pending while `applied_revision <
-  desired_revision`.
+- Applied state remains independent: `desired_config.pending` stays true while
+  `applied_revision < desired_revision`, even after the Hub-side transfer indicator
+  has cleared.
 - Unknown future desired keys must not make known keys unusable. Firmware should
   report unsupported keys in a future capability/error extension instead of claiming
   that the full revision was applied.

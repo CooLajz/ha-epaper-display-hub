@@ -141,7 +141,7 @@ class EpaperSensor(EpaperDisplayEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
-        """Return fresh in-memory telemetry; Recorder keeps history."""
+        """Return the latest known live or restored telemetry value."""
         value = telemetry_value(
             self.coordinator.device_data(self.device_id),
             self.entity_description.telemetry_key,
