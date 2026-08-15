@@ -47,7 +47,6 @@ from .const import (
     DESIRED_AUTO_OTA,
     DESIRED_PARTIAL_REFRESHES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
-    DESIRED_WEB_ENABLED,
     DOMAIN,
     PROTOCOL_VERSION,
     SLOT_BOTTOM_LEFT,
@@ -149,9 +148,6 @@ DISPLAY_SCHEMA = vol.Schema(
         vol.Optional(SLOT_EXTRA_HUMIDITY): EntitySelector(
             EntitySelectorConfig(domain="sensor")
         ),
-        vol.Required(
-            DESIRED_WEB_ENABLED, default=DEFAULT_DESIRED[DESIRED_WEB_ENABLED]
-        ): BooleanSelector(),
         vol.Required(
             DESIRED_SHOW_BATTERY_VOLTAGE,
             default=DEFAULT_DESIRED[DESIRED_SHOW_BATTERY_VOLTAGE],

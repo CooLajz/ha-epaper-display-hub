@@ -4,6 +4,24 @@ This document is the firmware-facing contract. Protocol version 1 is intentional
 small: after pairing, a display normally performs one `POST` request per wake,
 receives everything needed for rendering, refreshes, and returns to deep sleep.
 
+The reference implementation is maintained separately in
+[ESP32_LaskaKit_4.2](https://github.com/CooLajz/ESP32_LaskaKit_4.2). This repository is
+the source of truth for the Hub API and interoperability contract; firmware changes,
+builds, USB flashing, and physical display validation belong in that firmware project.
+
+Recommended firmware migration order:
+
+1. Keep the signed response as an atomic input: validate its HMAC and complete schema
+   before applying configuration or changing the e-ink image.
+2. Persist the applied desired revision and report it on the next check-in.
+3. Render only normalized `content`; never restore direct entity access or a Home
+   Assistant Long-Lived Access Token.
+4. Persist command acknowledgements until a later successful check-in confirms that
+   the Hub accepted them.
+5. After feature parity is physically verified, remove the legacy token client, local
+   configuration web, local wake scheduler, and alternate non-Hub runtime paths from
+   the firmware repository.
+
 ## Transport and trust boundaries
 
 - The API is intended for a trusted local network and is served by the Home
@@ -295,7 +313,6 @@ response_signature = e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d
     "revision": 4,
     "applied": true,
     "values": {
-      "web_enabled": false,
       "show_battery_voltage": true,
       "auto_ota": false,
       "partial_refreshes_between_full": 10
@@ -338,7 +355,11 @@ one-time commands. A bad source entity affects only its own item:
   "desired_config": {
     "revision": 5,
     "pending": true,
-    "values": {"web_enabled": false}
+    "values": {
+      "show_battery_voltage": true,
+      "auto_ota": false,
+      "partial_refreshes_between_full": 10
+    }
   },
   "content": {
     "main": {

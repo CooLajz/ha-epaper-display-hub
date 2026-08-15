@@ -16,10 +16,9 @@ response.
 Compatible firmware must explicitly implement [protocol v1](docs/PROTOCOL.md).
 Installing this integration alone cannot connect an arbitrary display.
 
-- [ESP32_LaskaKit_4.2](https://github.com/coolajz/ESP32_LaskaKit_4.2) — planned;
-  firmware support is not part of this repository and must be implemented separately.
-
-No firmware repository was modified while preparing this integration.
+- [ESP32_LaskaKit_4.2](https://github.com/CooLajz/ESP32_LaskaKit_4.2) — reference
+  firmware. Its implementation, hardware validation, builds, and releases are handled
+  separately in the firmware repository.
 
 ## Requirements and installation
 
@@ -64,8 +63,8 @@ selectors, automatic device-class detection, manual type override, label, decima
 places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 
-Desired configuration currently includes the web interface, battery voltage display,
-automatic OTA, a 24-hour wake schedule, and partial-refresh count. The desired
+Desired configuration currently includes battery voltage display, automatic OTA, a
+24-hour wake schedule, and partial-refresh count. The desired
 revision advances immediately in Home Assistant, but a sleeping device may not apply
 it until a later wake. The **Configuration pending** binary sensor makes that delay
 visible.

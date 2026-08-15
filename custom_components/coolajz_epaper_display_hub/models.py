@@ -84,9 +84,16 @@ class DeviceRecord:
     def from_dict(cls, data: Mapping[str, Any]) -> DeviceRecord:
         """Load a record from storage."""
         desired = deepcopy(DEFAULT_DESIRED)
-        desired.update(data.get("desired", {}))
-        desired.pop("refresh_interval_minutes", None)
-        legacy_schedule = desired.pop("wake_schedule", None)
+        stored_desired = data.get("desired", {})
+        if isinstance(stored_desired, Mapping):
+            desired.update(
+                {key: stored_desired[key] for key in desired if key in stored_desired}
+            )
+        legacy_schedule = (
+            stored_desired.get("wake_schedule")
+            if isinstance(stored_desired, Mapping)
+            else None
+        )
         return cls(
             device_id=format_device_id(str(data["device_id"])),
             secret=str(data["secret"]),

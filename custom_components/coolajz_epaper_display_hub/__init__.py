@@ -49,6 +49,7 @@ class HubRuntime:
 
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up the single hub config entry."""
+    from homeassistant.helpers import entity_registry as er
     from homeassistant.helpers.event import async_track_time_interval
 
     from .coordinator import HubCoordinator
@@ -74,6 +75,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         store.devices.pop(device_id, None)
     if removed_ids:
         await store.async_save()
+
+    entity_registry = er.async_get(hass)
+    for device_id in configured_ids:
+        retired_entity_id = entity_registry.async_get_entity_id(
+            "switch", DOMAIN, f"{device_id}-web_enabled"
+        )
+        if retired_entity_id is not None:
+            entity_registry.async_remove(retired_entity_id)
 
     coordinator = HubCoordinator(hass, store, entry)
     runtime = HubRuntime(

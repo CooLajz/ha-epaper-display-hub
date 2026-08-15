@@ -51,7 +51,6 @@
             "bottom_right_unit": "Bottom-right unit override",
             "weather": "Weather entity",
             "extra_humidity": "Additional humidity entity",
-            "web_enabled": "Web interface enabled",
             "show_battery_voltage": "Show battery voltage",
             "auto_ota": "Automatic OTA updates",
             "partial_refreshes_between_full": "Partial refreshes between full refreshes",
@@ -139,7 +138,6 @@
       "last_transfer_success": {"name": "Last transfer successful"}
     },
     "switch": {
-      "web_enabled": {"name": "Web interface"},
       "show_battery_voltage": {"name": "Show battery voltage"},
       "auto_ota": {"name": "Automatic OTA updates"}
     }

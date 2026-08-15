@@ -14,7 +14,6 @@ from . import HubConfigEntry
 from .const import (
     DESIRED_AUTO_OTA,
     DESIRED_SHOW_BATTERY_VOLTAGE,
-    DESIRED_WEB_ENABLED,
 )
 from .entity import EpaperDisplayEntity
 
@@ -27,11 +26,6 @@ class EpaperSwitchDescription(SwitchEntityDescription):
 
 
 DESCRIPTIONS = (
-    EpaperSwitchDescription(
-        key="web_enabled",
-        desired_key=DESIRED_WEB_ENABLED,
-        entity_category=EntityCategory.CONFIG,
-    ),
     EpaperSwitchDescription(
         key="show_battery_voltage",
         desired_key=DESIRED_SHOW_BATTERY_VOLTAGE,

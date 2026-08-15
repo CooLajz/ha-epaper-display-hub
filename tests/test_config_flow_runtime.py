@@ -26,7 +26,7 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     CONF_TRANSPORT_SECURITY,
     DEFAULT_DESIRED,
     DEFAULT_WAKE_SCHEDULE,
-    DESIRED_WEB_ENABLED,
+    DESIRED_SHOW_BATTERY_VOLTAGE,
     DOMAIN,
     NONCE_HEADER,
     SIGNATURE_HEADER,
@@ -52,15 +52,34 @@ from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E40
     sign,
     verify_signature,
 )
+from custom_components.coolajz_epaper_display_hub.sensor import (  # noqa: E402
+    OPTIONAL_SENSORS,
+    SENSORS,
+)
 
 IDENTITY = DeviceIdentity("AA:BB:CC:DD:EE:FF", "ESPink 4.2", "ESP32-S3", "1.0.0")
 
 
-def _reconfigure_input(*, web_enabled: bool = True) -> dict[str, Any]:
+def test_measurements_use_semantic_display_precision() -> None:
+    """Telemetry presentation should match each physical quantity."""
+    precision = {item.key: item.suggested_display_precision for item in SENSORS}
+    precision.update(
+        {
+            key: item.suggested_display_precision
+            for key, item in OPTIONAL_SENSORS.items()
+        }
+    )
+    assert precision["battery"] == 0
+    assert precision["battery_voltage"] == 2
+    assert precision["board_temperature"] == 1
+    assert precision["board_humidity"] == 0
+
+
+def _reconfigure_input(*, show_battery_voltage: bool = True) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
         **DEFAULT_DESIRED,
-        DESIRED_WEB_ENABLED: web_enabled,
+        DESIRED_SHOW_BATTERY_VOLTAGE: show_battery_voltage,
         **{
             f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(
                 DEFAULT_WAKE_SCHEDULE[str(hour)]
@@ -149,11 +168,11 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
         },
     )
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], _reconfigure_input(web_enabled=False)
+        result["flow_id"], _reconfigure_input(show_battery_voltage=False)
     )
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert record.desired[DESIRED_WEB_ENABLED] is False
+    assert record.desired[DESIRED_SHOW_BATTERY_VOLTAGE] is False
     assert record.desired_revision == original_revision + 1
 
     response = await entry.runtime_data.coordinator.async_process_checkin(

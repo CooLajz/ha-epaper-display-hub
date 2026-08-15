@@ -51,7 +51,6 @@
             "bottom_right_unit": "Vlastní jednotka pravé dolní hodnoty",
             "weather": "Entita počasí",
             "extra_humidity": "Entita doplňkové vlhkosti",
-            "web_enabled": "Zapnuté webové rozhraní",
             "show_battery_voltage": "Zobrazovat napětí baterie",
             "auto_ota": "Automatické OTA aktualizace",
             "partial_refreshes_between_full": "Počet partial refreshů mezi full refreshi",
@@ -139,7 +138,6 @@
       "last_transfer_success": {"name": "Poslední přenos úspěšný"}
     },
     "switch": {
-      "web_enabled": {"name": "Webové rozhraní"},
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
       "auto_ota": {"name": "Automatické OTA aktualizace"}
     }

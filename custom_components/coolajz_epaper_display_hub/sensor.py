@@ -44,6 +44,7 @@ SENSORS = (
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
     ),
     EpaperSensorDescription(
         key="battery_voltage",
@@ -51,6 +52,7 @@ SENSORS = (
         device_class=SensorDeviceClass.VOLTAGE,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
     ),
     EpaperSensorDescription(
         key="last_contact",
@@ -106,6 +108,7 @@ OPTIONAL_SENSORS = {
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=1,
     ),
     "board_humidity": EpaperSensorDescription(
         key="board_humidity",
@@ -114,6 +117,7 @@ OPTIONAL_SENSORS = {
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
     ),
 }
 

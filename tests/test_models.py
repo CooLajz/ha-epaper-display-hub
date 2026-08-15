@@ -110,7 +110,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     """Pending status follows applied revision and commands survive storage reload."""
     record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
     assert record.configuration_pending
-    assert record.update_desired({"web_enabled": False})
+    assert record.update_desired({"show_battery_voltage": False})
     assert record.update_configuration({}, {"22": 60, "23": 15})
     revision = record.desired_revision
     record.pending_commands.append({"id": "refresh-1", "type": "full_refresh"})
@@ -128,7 +128,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
             "reported_config": {
                 "revision": revision,
                 "applied": False,
-                "values": {"web_enabled": False},
+                "values": {"show_battery_voltage": False},
             }
         }
     )
@@ -143,3 +143,14 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
         }
     )
     assert not restored.configuration_pending
+
+
+def test_legacy_web_enabled_is_removed_from_stored_desired_config() -> None:
+    """Hub-only firmware must not receive the retired local-web setting."""
+    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
+    stored = record.as_dict()
+    stored["desired"] = {**stored["desired"], "web_enabled": True}
+
+    restored = DeviceRecord.from_dict(stored)
+
+    assert "web_enabled" not in restored.desired
