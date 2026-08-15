@@ -453,6 +453,11 @@ reports their IDs in `command_acknowledgements`. Firmware must execute each comm
 idempotently and retain its acknowledgement across deep sleep until a later successful
 check-in. This avoids losing a command when a response or display refresh fails.
 
+`partial_refreshes_between_full` is an integer from 0 through 20 and is configured by
+the display's Home Assistant number entity. It is not part of the display config-flow
+form. A change advances `desired_config.revision` like any other firmware-facing
+desired value.
+
 ## Hub-owned OTA orchestration
 
 OTA timing and command creation belong exclusively to the Hub. Firmware has no fixed

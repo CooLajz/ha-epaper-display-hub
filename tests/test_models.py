@@ -2,9 +2,13 @@
 
 from dataclasses import dataclass
 
+import pytest
+
 from custom_components.coolajz_epaper_display_hub.models import (
     DeviceRecord,
+    ProtocolError,
     normalize_content,
+    normalize_partial_refreshes,
     normalize_state,
 )
 from custom_components.coolajz_epaper_display_hub.security import generate_secret
@@ -27,6 +31,25 @@ class FakeStates:
 class FakeHass:
     def __init__(self, states: dict[str, FakeState]) -> None:
         self.states = FakeStates(states)
+
+
+def test_partial_refresh_count_is_limited_and_old_values_are_migrated() -> None:
+    assert normalize_partial_refreshes(0) == 0
+    assert normalize_partial_refreshes(20) == 20
+    with pytest.raises(ProtocolError, match="outside 0 to 20"):
+        normalize_partial_refreshes(21)
+    with pytest.raises(ProtocolError, match="must be whole"):
+        normalize_partial_refreshes(1.5)
+
+    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
+    stored = record.as_dict()
+    stored["desired"]["partial_refreshes_between_full"] = 100
+    old_revision = stored["desired_revision"]
+
+    restored = DeviceRecord.from_dict(stored)
+
+    assert restored.desired["partial_refreshes_between_full"] == 20
+    assert restored.desired_revision == old_revision + 1
 
 
 def test_complete_and_partial_telemetry_capabilities() -> None:

@@ -43,10 +43,8 @@ from .const import (
     CONF_PAIRING_PIN,
     CONF_PROTOCOL_VERSION,
     CONF_TRANSPORT_SECURITY,
-    DEFAULT_DESIRED,
     DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
-    DESIRED_PARTIAL_REFRESHES,
     DOMAIN,
     OTA_CHECK_TIME,
     PROTOCOL_VERSION,
@@ -161,14 +159,6 @@ def _display_schema(automatic_ota_enabled: bool) -> vol.Schema:
                 EntitySelectorConfig(domain="sensor")
             ),
             **ota_time_field,
-            vol.Required(
-                DESIRED_PARTIAL_REFRESHES,
-                default=DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=0, max=100, step=1, mode=NumberSelectorMode.BOX
-                )
-            ),
             **_wake_schedule_schema(),
         }
     )
@@ -194,16 +184,11 @@ def _content_from_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
 
 def _suggested_values(
     subentry: Any,
-    desired: Mapping[str, Any],
     wake_schedule: Mapping[str, Any],
     ota_check_time: str,
 ) -> dict[str, Any]:
     values: dict[str, Any] = {
         CONF_FRIENDLY_NAME: subentry.title,
-        DESIRED_PARTIAL_REFRESHES: desired.get(
-            DESIRED_PARTIAL_REFRESHES,
-            DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
-        ),
         OTA_CHECK_TIME: ota_check_time,
     }
     for hour in range(24):
@@ -407,15 +392,11 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         if record is None:
             return self.async_abort(reason="unknown_device")
         if user_input is not None:
-            desired = {
-                key: user_input[key] for key in DEFAULT_DESIRED if key in user_input
-            }
-            desired[DESIRED_PARTIAL_REFRESHES] = int(desired[DESIRED_PARTIAL_REFRESHES])
             wake_schedule = {
                 str(hour): int(user_input[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"])
                 for hour in range(24)
             }
-            configuration_changed = record.update_configuration(desired, wake_schedule)
+            configuration_changed = record.update_configuration({}, wake_schedule)
             ota_settings_changed = record.update_ota_settings(
                 record.automatic_ota_enabled,
                 user_input.get(OTA_CHECK_TIME, record.ota_check_time),
@@ -439,7 +420,6 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 _display_schema(record.automatic_ota_enabled),
                 _suggested_values(
                     subentry,
-                    record.desired,
                     record.wake_schedule,
                     record.ota_check_time,
                 ),

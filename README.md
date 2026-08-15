@@ -90,6 +90,10 @@ The Hub exposes the last OTA check time, its `current` / `updated` / `failed` st
 and the available firmware version when the display can determine it. The installed
 version remains available separately as **Firmware version**.
 
+The device also exposes **Partial refreshes between full refreshes** as a number
+entity with a whole-number range of 0 to 20. Like the battery-voltage switch, this is
+device configuration and is not duplicated in the display configuration form.
+
 The latest known entity values are persisted and restored after a Home Assistant
 restart, so sleeping displays do not temporarily become `unknown`. The persisted
 last-contact timestamp makes the age of those values explicit; new check-ins replace

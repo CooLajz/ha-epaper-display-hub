@@ -13,6 +13,9 @@ from .const import (
     DEFAULT_DESIRED,
     DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
+    DESIRED_PARTIAL_REFRESHES,
+    MAX_PARTIAL_REFRESHES,
+    MIN_PARTIAL_REFRESHES,
     OTA_COMMAND_SOURCE_AUTOMATIC,
     OTA_COMMAND_SOURCE_MANUAL,
     OTA_COMMAND_TYPE,
@@ -80,6 +83,26 @@ def normalize_ota_check_time(value: Any) -> str:
     return parsed.replace(microsecond=0).isoformat(timespec="seconds")
 
 
+def normalize_partial_refreshes(value: Any) -> int:
+    """Validate the device-configurable partial refresh count."""
+    if isinstance(value, bool):
+        raise ProtocolError("invalid_partial_refreshes", "Invalid refresh count")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as err:
+        raise ProtocolError(
+            "invalid_partial_refreshes", "Invalid refresh count"
+        ) from err
+    if not numeric.is_integer():
+        raise ProtocolError("invalid_partial_refreshes", "Refresh count must be whole")
+    result = int(numeric)
+    if not MIN_PARTIAL_REFRESHES <= result <= MAX_PARTIAL_REFRESHES:
+        raise ProtocolError(
+            "invalid_partial_refreshes", "Refresh count is outside 0 to 20"
+        )
+    return result
+
+
 @dataclass(slots=True)
 class DeviceRecord:
     """Persistent security and desired-state record for one display."""
@@ -115,6 +138,24 @@ class DeviceRecord:
             desired.update(
                 {key: stored_desired[key] for key in desired if key in stored_desired}
             )
+        stored_partial_refreshes = desired[DESIRED_PARTIAL_REFRESHES]
+        try:
+            normalized_partial_refreshes = normalize_partial_refreshes(
+                stored_partial_refreshes
+            )
+        except ProtocolError:
+            try:
+                numeric_partial_refreshes = int(stored_partial_refreshes)
+            except (TypeError, ValueError):
+                numeric_partial_refreshes = DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES]
+            normalized_partial_refreshes = min(
+                MAX_PARTIAL_REFRESHES,
+                max(MIN_PARTIAL_REFRESHES, numeric_partial_refreshes),
+            )
+        partial_refreshes_migrated = (
+            stored_partial_refreshes != normalized_partial_refreshes
+        )
+        desired[DESIRED_PARTIAL_REFRESHES] = normalized_partial_refreshes
         legacy_schedule = (
             stored_desired.get("wake_schedule")
             if isinstance(stored_desired, Mapping)
@@ -124,8 +165,8 @@ class DeviceRecord:
             "auto_ota" in stored_desired
         )
         desired_revision = max(1, int(data.get("desired_revision", 1)))
-        if legacy_auto_ota:
-            # Removing this firmware-facing key changes the desired payload.
+        if legacy_auto_ota or partial_refreshes_migrated:
+            # Both migrations change the firmware-facing desired payload.
             desired_revision += 1
         applied_revision = max(0, int(data.get("applied_revision", 0)))
         automatic_ota_enabled = bool(
@@ -349,7 +390,14 @@ class DeviceRecord:
         wake_schedule: Mapping[str, Any] | None = None,
     ) -> bool:
         """Update device configuration and hub-only planning in one revision."""
-        updated_desired = self.desired | dict(changes)
+        normalized_changes = dict(changes)
+        if DESIRED_PARTIAL_REFRESHES in normalized_changes:
+            normalized_changes[DESIRED_PARTIAL_REFRESHES] = (
+                normalize_partial_refreshes(
+                    normalized_changes[DESIRED_PARTIAL_REFRESHES]
+                )
+            )
+        updated_desired = self.desired | normalized_changes
         updated_schedule = (
             normalize_wake_schedule(wake_schedule)
             if wake_schedule is not None

@@ -11,7 +11,7 @@ PROTOCOL_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"
 STORAGE_VERSION = 1
 
-PLATFORMS = ["sensor", "binary_sensor", "switch"]
+PLATFORMS = ["sensor", "binary_sensor", "switch", "number"]
 SUBENTRY_TYPE_DISPLAY = "display"
 
 API_BASE = f"/api/{DOMAIN}/v1"
@@ -27,6 +27,8 @@ TIME_SYNC_RATE_WINDOW = timedelta(minutes=1)
 
 DEFAULT_REFRESH_INTERVAL_MINUTES = 30
 DEFAULT_PARTIAL_REFRESHES = 10
+MIN_PARTIAL_REFRESHES = 0
+MAX_PARTIAL_REFRESHES = 20
 AVAILABILITY_TOLERANCE = timedelta(minutes=2)
 WAKE_INTERVAL_OPTIONS = (5, 10, 15, 20, 30, 60)
 

@@ -47,6 +47,9 @@ from custom_components.coolajz_epaper_display_hub.models import (  # noqa: E402
     DeviceRecord,
     ProtocolError,
 )
+from custom_components.coolajz_epaper_display_hub.number import (  # noqa: E402
+    EpaperPartialRefreshNumber,
+)
 from custom_components.coolajz_epaper_display_hub.pairing import (  # noqa: E402
     DeviceIdentity,
 )
@@ -101,20 +104,29 @@ def test_device_switches_are_not_in_reconfigure_form() -> None:
     enabled_keys = {str(key.schema) for key in _display_schema(True).schema}
 
     assert DESIRED_SHOW_BATTERY_VOLTAGE not in disabled_keys
+    assert DESIRED_PARTIAL_REFRESHES not in disabled_keys
     assert "auto_ota" not in disabled_keys
     assert OTA_CHECK_TIME not in disabled_keys
     assert DESIRED_SHOW_BATTERY_VOLTAGE not in enabled_keys
+    assert DESIRED_PARTIAL_REFRESHES not in enabled_keys
     assert "auto_ota" not in enabled_keys
     assert OTA_CHECK_TIME in enabled_keys
 
 
-def _reconfigure_input(*, partial_refreshes: int = 10) -> dict[str, Any]:
+def test_partial_refresh_number_has_device_range() -> None:
+    assert EpaperPartialRefreshNumber._attr_native_min_value == 0
+    assert EpaperPartialRefreshNumber._attr_native_max_value == 20
+    assert EpaperPartialRefreshNumber._attr_native_step == 1
+
+
+def _reconfigure_input(*, first_hour_interval: int = 30) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
-        DESIRED_PARTIAL_REFRESHES: partial_refreshes,
         **{
             f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(
-                DEFAULT_WAKE_SCHEDULE[str(hour)]
+                first_hour_interval
+                if hour == 0
+                else DEFAULT_WAKE_SCHEDULE[str(hour)]
             )
             for hour in range(24)
         },
@@ -200,12 +212,13 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
         },
     )
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], _reconfigure_input(partial_refreshes=11)
+        result["flow_id"], _reconfigure_input(first_hour_interval=15)
     )
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert record.desired[DESIRED_SHOW_BATTERY_VOLTAGE] is True
-    assert record.desired[DESIRED_PARTIAL_REFRESHES] == 11
+    assert record.desired[DESIRED_PARTIAL_REFRESHES] == 10
+    assert record.wake_schedule["0"] == 15
     assert record.desired_revision == original_revision + 1
 
     response = await entry.runtime_data.coordinator.async_process_checkin(

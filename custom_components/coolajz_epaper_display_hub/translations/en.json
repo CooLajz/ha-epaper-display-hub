@@ -52,7 +52,6 @@
             "weather": "Weather entity",
             "extra_humidity": "Additional humidity entity",
             "ota_check_time": "Daily OTA check time",
-            "partial_refreshes_between_full": "Partial refreshes between full refreshes",
             "wake_interval_00": "00:00–00:59 wake interval (minutes)",
             "wake_interval_01": "01:00–01:59 wake interval (minutes)",
             "wake_interval_02": "02:00–02:59 wake interval (minutes)",
@@ -150,6 +149,9 @@
       "show_battery_voltage": {"name": "Show battery voltage"},
       "auto_ota": {"name": "Automatic OTA"},
       "ota_next_wake": {"name": "OTA on next wake"}
+    },
+    "number": {
+      "partial_refreshes_between_full": {"name": "Partial refreshes between full refreshes"}
     }
   }
 }
