@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HubConfigEntry
 from .const import (
+    CONF_CONTENT,
+    CONF_DEVICE_ID,
     DESIRED_SHOW_BATTERY_VOLTAGE,
+    DOMAIN,
     OTA_COMMAND_SOURCE_MANUAL,
+    SLOT_WEATHER,
 )
 from .entity import EpaperDisplayEntity
 from .security import generate_nonce
@@ -44,6 +50,12 @@ DESCRIPTIONS = (
     ),
 )
 
+SHOW_WEATHER_DESCRIPTION = EpaperSwitchDescription(
+    key="show_weather",
+    mode="show_weather",
+    entity_category=EntityCategory.CONFIG,
+)
+
 
 class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
     """Change desired state or manage a durable Hub-side OTA request."""
@@ -69,6 +81,8 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
             return record.automatic_ota_enabled
         if self.entity_description.mode == "manual_ota":
             return record.manual_ota_requested
+        if self.entity_description.mode == "show_weather":
+            return record.show_weather
         return bool(record.desired.get(DESIRED_SHOW_BATTERY_VOLTAGE))
 
     async def _async_set(self, value: bool) -> None:
@@ -83,6 +97,8 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
                 )
             elif not value:
                 changed = record.cancel_undelivered_manual_ota()
+        elif self.entity_description.mode == "show_weather":
+            changed = record.update_show_weather(value)
         else:
             changed = record.update_desired({DESIRED_SHOW_BATTERY_VOLTAGE: value})
         if changed:
@@ -105,8 +121,21 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up desired-state controls per subentry."""
-    for subentry_id in entry.subentries:
+    for subentry_id, subentry in entry.subentries.items():
+        descriptions = list(DESCRIPTIONS)
+        content = subentry.data.get(CONF_CONTENT, {})
+        if isinstance(content, Mapping) and content.get(SLOT_WEATHER):
+            descriptions.append(SHOW_WEATHER_DESCRIPTION)
+        else:
+            registry = er.async_get(hass)
+            entity_id = registry.async_get_entity_id(
+                "switch",
+                DOMAIN,
+                f"{subentry.data[CONF_DEVICE_ID]}-{SHOW_WEATHER_DESCRIPTION.key}",
+            )
+            if entity_id is not None:
+                registry.async_remove(entity_id)
         async_add_entities(
-            [EpaperConfigSwitch(entry, subentry_id, item) for item in DESCRIPTIONS],
+            [EpaperConfigSwitch(entry, subentry_id, item) for item in descriptions],
             config_subentry_id=subentry_id,
         )

@@ -147,6 +147,7 @@
     },
     "switch": {
       "show_battery_voltage": {"name": "Show battery voltage"},
+      "show_weather": {"name": "Show weather"},
       "auto_ota": {"name": "Automatic OTA"},
       "ota_next_wake": {"name": "OTA on next wake"}
     },

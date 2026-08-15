@@ -126,6 +126,7 @@ class DeviceRecord:
     next_wake_at: str | None = None
     last_planned_interval_seconds: int | None = None
     last_entity_data: dict[str, Any] = field(default_factory=dict)
+    show_weather: bool = True
     automatic_ota_enabled: bool = False
     ota_check_time: str = DEFAULT_OTA_CHECK_TIME
     last_automatic_ota_date: str | None = None
@@ -175,6 +176,7 @@ class DeviceRecord:
                 if isinstance(data.get("last_entity_data"), Mapping)
                 else {}
             ),
+            show_weather=bool(data.get("show_weather", True)),
             automatic_ota_enabled=bool(data.get("automatic_ota_enabled", False)),
             ota_check_time=normalize_ota_check_time(
                 data.get("ota_check_time", DEFAULT_OTA_CHECK_TIME)
@@ -205,6 +207,7 @@ class DeviceRecord:
             "next_wake_at": self.next_wake_at,
             "last_planned_interval_seconds": self.last_planned_interval_seconds,
             "last_entity_data": self.last_entity_data,
+            "show_weather": self.show_weather,
             "automatic_ota_enabled": self.automatic_ota_enabled,
             "ota_check_time": self.ota_check_time,
             "last_automatic_ota_date": self.last_automatic_ota_date,
@@ -318,6 +321,13 @@ class DeviceRecord:
             return False
         self.automatic_ota_enabled = enabled
         self.ota_check_time = normalized_time
+        return True
+
+    def update_show_weather(self, enabled: bool) -> bool:
+        """Update whether configured weather content is sent to the display."""
+        if self.show_weather == enabled:
+            return False
+        self.show_weather = enabled
         return True
 
     def schedule_automatic_ota(self, local_now: datetime, command_id: str) -> bool:
@@ -523,7 +533,12 @@ def normalize_state(
     }
 
 
-def normalize_content(hass: Any, content: Mapping[str, Any]) -> dict[str, Any]:
+def normalize_content(
+    hass: Any,
+    content: Mapping[str, Any],
+    *,
+    show_weather: bool = True,
+) -> dict[str, Any]:
     """Resolve selected HA entities without exposing entity IDs to the display."""
     result: dict[str, Any] = {}
     for slot in VALUE_SLOTS:
@@ -540,7 +555,7 @@ def normalize_content(hass: Any, content: Mapping[str, Any]) -> dict[str, Any]:
             unit=selection.get("unit"),
         )
 
-    weather_id = content.get("weather")
+    weather_id = content.get("weather") if show_weather else None
     weather_state = hass.states.get(weather_id) if isinstance(weather_id, str) else None
     weather_attributes = (
         getattr(weather_state, "attributes", {}) if weather_state else {}

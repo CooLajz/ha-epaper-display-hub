@@ -169,6 +169,18 @@ def test_content_and_weather_normalization_is_fault_isolated() -> None:
     }
     assert result["weather"]["valid"] is True
 
+    hidden = normalize_content(
+        hass,
+        {"weather": "weather.home"},
+        show_weather=False,
+    )
+    assert hidden["weather"] == {
+        "valid": False,
+        "condition": None,
+        "temperature": None,
+        "humidity": None,
+    }
+
 
 def test_desired_reported_and_durable_commands_round_trip() -> None:
     """Pending status follows applied revision and commands survive storage reload."""
@@ -186,6 +198,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
         "battery_voltage": 3.912,
         "last_transfer_success": True,
     }
+    assert record.update_show_weather(False)
     restored = DeviceRecord.from_dict(record.as_dict())
     assert restored.pending_commands == [{"id": "refresh-1", "type": "full_refresh"}]
     assert restored.wake_schedule["22"] == 60
@@ -193,6 +206,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     assert restored.next_wake_at == "2026-08-15T23:00:00+02:00"
     assert restored.last_planned_interval_seconds == 2577
     assert restored.last_entity_data == record.last_entity_data
+    assert not restored.show_weather
     assert restored.configuration_pending
     assert restored.mark_configuration_delivered(revision)
     assert not restored.configuration_pending

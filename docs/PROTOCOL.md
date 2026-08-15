@@ -392,6 +392,12 @@ unchanged and must not parse, round, pad, or otherwise reformat it. `type` may s
 the visual template, while `label` and `unit` remain separate display strings. An
 invalid slot uses `null` as its `display_value`.
 
+If a weather entity is configured, the Hub exposes a persistent per-device runtime
+switch controlling its delivery. When **Show weather** is off, the signed response
+uses `valid: false` for `weather` without removing the configured Home Assistant
+entity. Firmware therefore hides the weather icon at the next check-in. The switch
+is not part of `desired_config` and does not require firmware-side persistence.
+
 The response repeats all request headers except the timestamp and signature values.
 Its signature uses this separate context, preventing request/response reflection:
 

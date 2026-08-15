@@ -147,6 +147,7 @@
     },
     "switch": {
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
+      "show_weather": {"name": "Zobrazovat počasí"},
       "auto_ota": {"name": "Automatická OTA"},
       "ota_next_wake": {"name": "OTA při příštím probuzení"}
     },

@@ -63,6 +63,10 @@ selectors, automatic device-class detection, manual type override, label, decima
 places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 
+When a weather entity is configured, the display exposes a per-device
+**Show weather** switch. Turning it off keeps the selected entity configured but
+suppresses weather content in subsequent check-ins; turning it on restores delivery.
+
 Desired firmware configuration currently includes battery voltage display and the
 partial-refresh count. The 24-hour wake schedule is owned and evaluated by the Hub.
 The desired revision advances immediately in Home Assistant, but a sleeping device

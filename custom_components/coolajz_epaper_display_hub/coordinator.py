@@ -203,7 +203,11 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 "values": dict(record.desired),
                 "pending": record.configuration_application_pending,
             },
-            "content": normalize_content(self.hass, content_config),
+            "content": normalize_content(
+                self.hass,
+                content_config,
+                show_weather=record.show_weather,
+            ),
             "commands": commands,
         }
 
