@@ -24,6 +24,9 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     CONF_FRIENDLY_NAME,
     CONF_PAIRING_PIN,
     CONF_TRANSPORT_SECURITY,
+    DEFAULT_DESIRED,
+    DEFAULT_WAKE_SCHEDULE,
+    DESIRED_WEB_ENABLED,
     DOMAIN,
     NONCE_HEADER,
     SIGNATURE_HEADER,
@@ -31,6 +34,7 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     TIME_SYNC_PATH,
     TRANSPORT_HTTPS_INSECURE,
     TRANSPORT_HTTPS_VERIFIED,
+    WAKE_SCHEDULE_FIELD_PREFIX,
 )
 from custom_components.coolajz_epaper_display_hub.models import (  # noqa: E402
     DeviceRecord,
@@ -50,6 +54,20 @@ from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E40
 )
 
 IDENTITY = DeviceIdentity("AA:BB:CC:DD:EE:FF", "ESPink 4.2", "ESP32-S3", "1.0.0")
+
+
+def _reconfigure_input(*, web_enabled: bool = True) -> dict[str, Any]:
+    return {
+        CONF_FRIENDLY_NAME: "Test display",
+        **DEFAULT_DESIRED,
+        DESIRED_WEB_ENABLED: web_enabled,
+        **{
+            f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(
+                DEFAULT_WAKE_SCHEDULE[str(hour)]
+            )
+            for hour in range(24)
+        },
+    }
 
 
 async def test_create_main_config_entry(hass: HomeAssistant) -> None:
@@ -108,6 +126,36 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
     assert CONF_PAIRING_PIN not in subentry.data
 
     record = entry.runtime_data.store.devices["AA:BB:CC:DD:EE:FF"]
+    original_revision = record.desired_revision
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], _reconfigure_input()
+    )
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert record.desired_revision == original_revision
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], _reconfigure_input(web_enabled=False)
+    )
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert record.desired[DESIRED_WEB_ENABLED] is False
+    assert record.desired_revision == original_revision + 1
+
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,
         {"telemetry": {}, "firmware_version": "1.0.0"},
@@ -167,9 +215,8 @@ async def test_https_insecure_pairs_directly_from_first_form(
             },
         )
         assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert (
-            result["result"].data[CONF_TRANSPORT_SECURITY] == TRANSPORT_HTTPS_INSECURE
-        )
+        subentry = next(iter(entry.subentries.values()))
+        assert subentry.data[CONF_TRANSPORT_SECURITY] == TRANSPORT_HTTPS_INSECURE
         assert pair_request.await_args.kwargs["transport_security"] == (
             TRANSPORT_HTTPS_INSECURE
         )

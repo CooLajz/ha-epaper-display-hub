@@ -403,11 +403,13 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 str(hour): int(user_input[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"])
                 for hour in range(24)
             }
-            if record.update_configuration(desired, wake_schedule):
+            configuration_changed = record.update_configuration(desired, wake_schedule)
+            if configuration_changed:
                 await self._runtime.store.async_save()
+                self._runtime.coordinator.async_update_listeners()
             data = dict(subentry.data)
             data[CONF_CONTENT] = _content_from_input(user_input)
-            return self.async_update_reload_and_abort(
+            return self.async_update_and_abort(
                 entry,
                 subentry,
                 title=str(user_input[CONF_FRIENDLY_NAME]),
