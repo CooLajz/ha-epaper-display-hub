@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import web
-from homeassistant.components.http.view import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.http import HomeAssistantView
 
 from .const import (
     CHECKIN_PATH,

@@ -32,8 +32,7 @@ In HACS, open Custom repositories, add
 restart Home Assistant. Then open Settings → Devices & services → Add integration and
 choose **E-paper Display Hub**.
 
-This repository has not been published yet, so the HACS URL above is the intended
-future location rather than a claim that installation is currently available.
+[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=CooLajz&repository=ha-epaper-display-hub&category=integration)
 
 ## Pair a display
 
