@@ -18,7 +18,7 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e '.[test]'
+      - run: python -m pip install '.[test]'
       - run: ruff check .
       - run: mypy custom_components/coolajz_epaper_display_hub
       - run: pytest --cov=custom_components.coolajz_epaper_display_hub --cov-report=term-missing
