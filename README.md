@@ -8,7 +8,8 @@ The integration is primarily intended for our internal local-network e-paper
 displays. It replaces Home Assistant Long-Lived Access Tokens in firmware with a
 small versioned protocol and a separate HMAC key for every display. It does not use
 MQTT. A display sends telemetry once per wake and receives configuration, selected
-Home Assistant values, weather, and commands in one response.
+Home Assistant values, weather, commands, and an authoritative wake time in one
+response.
 
 ## Compatible firmware
 
@@ -57,15 +58,20 @@ places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 
 Desired configuration currently includes the web interface, battery voltage display,
-automatic OTA, default refresh interval, and partial-refresh count. The desired
+automatic OTA, a 24-hour wake schedule, and partial-refresh count. The desired
 revision advances immediately in Home Assistant, but a sleeping device may not apply
 it until a later wake. The **Configuration pending** binary sensor makes that delay
 visible.
 
+The hub calculates the nearest future schedule boundary in Home Assistant's timezone
+and returns `server_time`, `next_wake_at`, and authoritative `sleep_seconds`. The
+**Next wake** and **Last planned interval** sensors expose the same persisted plan;
+availability remains true until two minutes after the expected wake time.
+
 Telemetry is not restored as if it were current. The Recorder keeps history, while
 after a Home Assistant restart the integration waits for a fresh device check-in.
 Only security state, desired/reported revisions, content selection, optional sensor
-capabilities, and pending commands are persisted.
+capabilities, pending commands, and wake-planning diagnostics are persisted.
 
 ## Security limitations
 
@@ -76,6 +82,8 @@ capabilities, and pending commands are persisted.
   key capture.
 - Keys are stored in Home Assistant `.storage` and backups. Protect both.
 - A device needs trustworthy UTC time for replay protection after full power loss.
+- Protocol v1 restores that time through the nonce-bound, per-device HMAC-signed
+  `/time-sync` endpoint before the first normal `/check-in`.
 - Do not expose the protocol endpoint directly to the internet. It is designed for a
   controlled local network and does not replace firewalling or network segmentation.
 
@@ -94,7 +102,10 @@ display again.
 The repository includes pytest, Ruff, mypy, HACS validation, and hassfest workflows.
 Local unit tests cover protocol canonicalization, key isolation, replay handling,
 pairing expiry, telemetry capability rules, desired/reported revisions, durable
-commands, and content normalization. A real Home Assistant runtime is still required
+commands, content normalization, hourly boundaries, and daylight-saving transitions.
+The suite also covers signed time recovery, nonce binding, invalid signatures,
+unknown devices, short nonces, replay rejection, and per-device rate limiting. A real
+Home Assistant runtime is still required
 to verify UI flow rendering, Config Subentry lifecycle, Device/Entity Registry
 behavior, HTTP routing behind the chosen proxy, and Recorder behavior.
 

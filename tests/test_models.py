@@ -111,10 +111,18 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
     assert record.configuration_pending
     assert record.update_desired({"web_enabled": False})
+    assert record.update_configuration({}, {"22": 60, "23": 15})
     revision = record.desired_revision
     record.pending_commands.append({"id": "refresh-1", "type": "full_refresh"})
+    record.last_contact_at = "2026-08-15T22:17:03+02:00"
+    record.next_wake_at = "2026-08-15T23:00:00+02:00"
+    record.last_planned_interval_seconds = 2577
     restored = DeviceRecord.from_dict(record.as_dict())
     assert restored.pending_commands == [{"id": "refresh-1", "type": "full_refresh"}]
+    assert restored.wake_schedule["22"] == 60
+    assert restored.wake_schedule["23"] == 15
+    assert restored.next_wake_at == "2026-08-15T23:00:00+02:00"
+    assert restored.last_planned_interval_seconds == 2577
     restored.apply_reported(
         {
             "reported_config": {

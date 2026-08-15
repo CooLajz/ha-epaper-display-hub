@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from .const import DEFAULT_DESIRED, PROTOCOL_VERSION, VALUE_SLOTS
+from .const import DEFAULT_DESIRED, DEFAULT_WAKE_SCHEDULE, PROTOCOL_VERSION, VALUE_SLOTS
+from .scheduling import normalize_wake_schedule
 
 MAC_RE = re.compile(r"^[0-9A-F]{12}$")
 KNOWN_VALUE_TYPES = {
@@ -63,7 +65,10 @@ class DeviceRecord:
 
     device_id: str
     secret: str
-    desired: dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_DESIRED))
+    desired: dict[str, Any] = field(default_factory=lambda: deepcopy(DEFAULT_DESIRED))
+    wake_schedule: dict[str, int] = field(
+        default_factory=lambda: deepcopy(DEFAULT_WAKE_SCHEDULE)
+    )
     desired_revision: int = 1
     reported: dict[str, Any] = field(default_factory=dict)
     reported_revision: int = 0
@@ -71,16 +76,24 @@ class DeviceRecord:
     nonces: list[str] = field(default_factory=list)
     pending_commands: list[dict[str, Any]] = field(default_factory=list)
     capabilities_seen: list[str] = field(default_factory=list)
+    last_contact_at: str | None = None
+    next_wake_at: str | None = None
+    last_planned_interval_seconds: int | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> DeviceRecord:
         """Load a record from storage."""
-        desired = dict(DEFAULT_DESIRED)
+        desired = deepcopy(DEFAULT_DESIRED)
         desired.update(data.get("desired", {}))
+        desired.pop("refresh_interval_minutes", None)
+        legacy_schedule = desired.pop("wake_schedule", None)
         return cls(
             device_id=format_device_id(str(data["device_id"])),
             secret=str(data["secret"]),
             desired=desired,
+            wake_schedule=normalize_wake_schedule(
+                data.get("wake_schedule", legacy_schedule)
+            ),
             desired_revision=max(1, int(data.get("desired_revision", 1))),
             reported=dict(data.get("reported", {})),
             reported_revision=max(0, int(data.get("reported_revision", 0))),
@@ -88,6 +101,13 @@ class DeviceRecord:
             nonces=[str(item) for item in data.get("nonces", [])],
             pending_commands=[dict(item) for item in data.get("pending_commands", [])],
             capabilities_seen=[str(item) for item in data.get("capabilities_seen", [])],
+            last_contact_at=data.get("last_contact_at"),
+            next_wake_at=data.get("next_wake_at"),
+            last_planned_interval_seconds=(
+                int(data["last_planned_interval_seconds"])
+                if data.get("last_planned_interval_seconds") is not None
+                else None
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -96,6 +116,7 @@ class DeviceRecord:
             "device_id": self.device_id,
             "secret": self.secret,
             "desired": self.desired,
+            "wake_schedule": self.wake_schedule,
             "desired_revision": self.desired_revision,
             "reported": self.reported,
             "reported_revision": self.reported_revision,
@@ -103,6 +124,9 @@ class DeviceRecord:
             "nonces": self.nonces,
             "pending_commands": self.pending_commands,
             "capabilities_seen": self.capabilities_seen,
+            "last_contact_at": self.last_contact_at,
+            "next_wake_at": self.next_wake_at,
+            "last_planned_interval_seconds": self.last_planned_interval_seconds,
         }
 
     @property
@@ -112,10 +136,24 @@ class DeviceRecord:
 
     def update_desired(self, changes: Mapping[str, Any]) -> bool:
         """Update desired values and increment revision only on a real change."""
-        updated = self.desired | dict(changes)
-        if updated == self.desired:
+        return self.update_configuration(changes)
+
+    def update_configuration(
+        self,
+        changes: Mapping[str, Any],
+        wake_schedule: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Update device configuration and hub-only planning in one revision."""
+        updated_desired = self.desired | dict(changes)
+        updated_schedule = (
+            normalize_wake_schedule(wake_schedule)
+            if wake_schedule is not None
+            else self.wake_schedule
+        )
+        if updated_desired == self.desired and updated_schedule == self.wake_schedule:
             return False
-        self.desired = updated
+        self.desired = updated_desired
+        self.wake_schedule = updated_schedule
         self.desired_revision += 1
         return True
 

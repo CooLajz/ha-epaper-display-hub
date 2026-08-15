@@ -117,15 +117,96 @@ Replay protection combines two controls:
 
 - Every accepted nonce is persisted before the request is processed. The last 64
   nonces are retained per display, including across Home Assistant restarts.
-- The timestamp window is `max(24 h, 2 × desired refresh interval + 10 min)`, capped
-  at seven days. Up to ten minutes of future clock skew is accepted. This allows deep
-  sleep without accepting indefinitely old captures.
+- The timestamp window is `max(24 h, 2 × longest scheduled interval + 10 min)`,
+  capped at seven days. Up to ten minutes of future clock skew is accepted. This
+  allows deep sleep without accepting indefinitely old captures.
 - Pairing registration is limited per client address to reduce online guessing of
   the short-lived eight-digit code.
 
 The device must keep a usable UTC clock through deep sleep. After a full power loss
-with no trusted clock source it must obtain trustworthy time before check-in. Do not
-weaken signature validation to compensate for a missing clock.
+with no trusted clock source it uses the authenticated time-recovery exchange below
+before check-in. The `/check-in` freshness rules are never weakened.
+
+## Trusted time recovery after power loss
+
+Endpoint: `POST /time-sync`.
+
+This endpoint is used only when the device has lost trustworthy UTC time. It does not
+replace the normal one-request `/check-in` wake cycle and never returns configuration,
+content, weather, commands, or wake planning. An unauthenticated network time value
+must not be treated as trusted device time.
+
+The request body contains exactly these fields and deliberately has no timestamp:
+
+```json
+{
+  "protocol_version": 1,
+  "device_id": "AA:BB:CC:DD:EE:FF",
+  "nonce": "BBBBBBBBBBBBBBBBBBBBBB"
+}
+```
+
+`nonce` is a new URL-safe random value carrying at least 128 bits of entropy. The
+request has `X-EPD-Signature`; other identity values come from the signed body. The
+exact transmitted body bytes are hashed into this separate canonical context:
+
+```text
+EPD-HUB-TIME-REQUEST-V1
+POST
+/api/coolajz_epaper_display_hub/v1/time-sync
+1
+AA:BB:CC:DD:EE:FF
+BBBBBBBBBBBBBBBBBBBBBB
+lowercase_sha256_of_exact_body_bytes
+```
+
+The server validates the protocol, normalized device ID, nonce format and replay
+history, device existence, and HMAC before consuming the per-device rate limit. A
+valid nonce is persisted before the response is returned. The rate limit is six
+authenticated requests per device per rolling minute; invalid signatures cannot
+consume another device's allowance.
+
+A successful response contains only trusted time metadata:
+
+```json
+{
+  "device_id": "AA:BB:CC:DD:EE:FF",
+  "protocol_version": 1,
+  "server_time": 1786780800,
+  "server_time_iso": "2026-08-15T10:00:00+02:00"
+}
+```
+
+`server_time` is Unix seconds in UTC. `server_time_iso` is the same instant rendered
+in the Home Assistant timezone. The response includes `X-EPD-Signature`,
+`X-EPD-Device-ID`, `X-EPD-Protocol-Version`, and the original request nonce in
+`X-EPD-Nonce`. Its signature uses a direction-specific context bound to that nonce:
+
+```text
+EPD-HUB-TIME-RESPONSE-V1
+200
+/api/coolajz_epaper_display_hub/v1/time-sync
+1
+AA:BB:CC:DD:EE:FF
+BBBBBBBBBBBBBBBBBBBBBB
+lowercase_sha256_of_exact_response_body_bytes
+```
+
+Firmware verifies the response body, device ID, protocol, original nonce, and HMAC
+before setting its UTC clock. A response captured for a different request nonce is
+invalid, so replaying an old signed time response cannot satisfy a fresh request.
+
+### Time-sync interoperability vector
+
+```text
+key_hex = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+device_id = AA:BB:CC:DD:EE:FF
+nonce = BBBBBBBBBBBBBBBBBBBBBB
+request_body = {"device_id":"AA:BB:CC:DD:EE:FF","nonce":"BBBBBBBBBBBBBBBBBBBBBB","protocol_version":1}
+request_signature = 71bd4d30b99446abb492086e5fe40f4607350a469ee9fe36f15be4cb693c00a5
+response_body = {"device_id":"AA:BB:CC:DD:EE:FF","protocol_version":1,"server_time":1786780800,"server_time_iso":"2026-08-15T10:00:00+02:00"}
+response_signature = e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d616d3
+```
 
 ### Request body
 
@@ -143,7 +224,6 @@ weaken signature validation to compensate for a missing clock.
       "web_enabled": false,
       "show_battery_voltage": true,
       "auto_ota": false,
-      "refresh_interval_minutes": 30,
       "partial_refreshes_between_full": 10
     }
   },
@@ -153,7 +233,6 @@ weaken signature validation to compensate for a missing clock.
     "rssi": -63,
     "active_runtime_ms": 2140,
     "last_refresh": "2026-08-15T08:00:02Z",
-    "next_wake_interval_minutes": 30,
     "wake_reason": "timer",
     "refresh_type": "partial",
     "environment_sensor_present": true,
@@ -178,7 +257,10 @@ one-time commands. A bad source entity affects only its own item:
 ```json
 {
   "protocol_version": 1,
-  "server_time": 1786780802,
+  "server_time": "2026-08-15T22:17:03+02:00",
+  "next_wake_at": "2026-08-15T23:00:00+02:00",
+  "sleep_seconds": 2577,
+  "revision": 5,
   "desired_config": {
     "revision": 5,
     "pending": true,
@@ -220,6 +302,35 @@ lowercase_sha256_of_exact_response_body_bytes
 
 Firmware must verify the response device ID, original nonce, time, exact-body hash,
 and HMAC before applying configuration, commands, or display data.
+
+## Wake scheduling and offline fallback
+
+Home Assistant is the only source of truth for wake scheduling. Each display has a
+24-hour local schedule whose values are constrained to 5, 10, 15, 20, 30, or 60
+minutes. The hub searches for the nearest strictly future valid boundary; it does not
+add the interval belonging to the current hour. For example, a check-in at 22:17 with
+a 60-minute interval for hour 22 and a 15-minute interval for hour 23 returns 23:00,
+followed by 23:15, 23:30, and 23:45.
+
+`server_time` and `next_wake_at` are timezone-aware ISO 8601 values in the Home
+Assistant timezone. `sleep_seconds` is authoritative and is measured from response
+creation. The response-level `revision` identifies the desired configuration used by
+the calculation. Timezone transitions are resolved on Home Assistant's real UTC
+timeline, including skipped and repeated local hours.
+
+Firmware records a monotonic timestamp when it accepts the signed response. Just
+before deep sleep it subtracts the elapsed render and cycle time from
+`sleep_seconds`, never substitutes a locally calculated schedule, and uses
+`server_time` for the displayed last-refresh time.
+
+If the hub is unreachable, times out, returns an unsuccessful response, or fails
+signature validation, firmware preserves the current image, performs no e-ink
+refresh, applies no configuration, runs no automatic OTA, and sleeps for exactly 300
+seconds before retrying. Unverified response data must never affect device state.
+
+The hub persists `next_wake_at` and the last planned interval. A sleeping display is
+available until two minutes after its planned wake time. It becomes unavailable only
+after missing that deadline and returns automatically on its next successful check-in.
 
 ## Desired versus reported state
 

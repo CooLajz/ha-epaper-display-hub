@@ -10,9 +10,14 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_AVAILABILITY_GRACE, PROTOCOL_VERSION
+from .const import (
+    AVAILABILITY_TOLERANCE,
+    PROTOCOL_VERSION,
+)
 from .models import DeviceRecord, normalize_content, optional_number
+from .scheduling import next_wake
 from .store import HubStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +36,30 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             config_entry=config_entry,
         )
         self.store = store
-        self.data = {}
+        self.data = {
+            record.device_id: self._persisted_planning_data(record)
+            for record in store.devices.values()
+        }
+
+    @staticmethod
+    def _parse_timestamp(value: str | None) -> datetime | None:
+        """Parse one persisted aware ISO timestamp."""
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else None
+
+    @classmethod
+    def _persisted_planning_data(cls, record: DeviceRecord) -> dict[str, Any]:
+        """Restore planning diagnostics without restoring transient telemetry."""
+        return {
+            "last_contact": cls._parse_timestamp(record.last_contact_at),
+            "next_wake_at": cls._parse_timestamp(record.next_wake_at),
+            "last_planned_interval_seconds": record.last_planned_interval_seconds,
+        }
 
     @callback
     def device_data(self, device_id: str) -> dict[str, Any]:
@@ -41,28 +69,42 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     @callback
     def is_device_available(self, device_id: str) -> bool:
         """Calculate availability from last contact and expected interval."""
-        data = self.device_data(device_id)
-        last_contact = data.get("last_contact")
-        if not isinstance(last_contact, datetime):
-            return False
         record = self.store.devices.get(device_id)
         if record is None:
             return False
-        minutes = max(1, int(record.desired.get("refresh_interval_minutes", 30)))
-        elapsed = (datetime.now(UTC) - last_contact).total_seconds()
-        return elapsed <= minutes * 60 * DEFAULT_AVAILABILITY_GRACE
+        next_wake_at = self.device_data(device_id).get("next_wake_at")
+        if not isinstance(next_wake_at, datetime):
+            next_wake_at = self._parse_timestamp(record.next_wake_at)
+        if not isinstance(next_wake_at, datetime):
+            return False
+        return (
+            datetime.now(UTC) <= next_wake_at.astimezone(UTC) + AVAILABILITY_TOLERANCE
+        )
 
     async def async_process_checkin(
         self,
         record: DeviceRecord,
         payload: Mapping[str, Any],
         content_config: Mapping[str, Any],
+        *,
+        response_time: datetime | None = None,
     ) -> dict[str, Any]:
         """Store telemetry and build the one-shot display response."""
         telemetry = dict(payload.get("telemetry", {}))
         record.apply_reported(payload)
         record.remember_capabilities(telemetry)
-        now = datetime.now(UTC)
+        now = (
+            (response_time or datetime.now(UTC)).astimezone(UTC).replace(microsecond=0)
+        )
+        timezone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
+        planned_wake, sleep_seconds = next_wake(
+            now,
+            timezone,
+            record.wake_schedule,
+        )
+        record.last_contact_at = now.isoformat()
+        record.next_wake_at = planned_wake.isoformat()
+        record.last_planned_interval_seconds = sleep_seconds
         device_data = {
             **telemetry,
             "last_contact": now,
@@ -71,6 +113,8 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             "hardware_variant": payload.get("hardware_variant"),
             "protocol_version": PROTOCOL_VERSION,
             "last_transfer_success": True,
+            "next_wake_at": planned_wake,
+            "last_planned_interval_seconds": sleep_seconds,
         }
         updated = dict(self.data)
         updated[record.device_id] = device_data
@@ -89,7 +133,10 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         await self.store.async_save()
         return {
             "protocol_version": PROTOCOL_VERSION,
-            "server_time": int(now.timestamp()),
+            "server_time": now.astimezone(timezone).isoformat(),
+            "next_wake_at": planned_wake.isoformat(),
+            "sleep_seconds": sleep_seconds,
+            "revision": record.desired_revision,
             "desired_config": {
                 "revision": record.desired_revision,
                 "values": dict(record.desired),
@@ -109,7 +156,7 @@ def telemetry_value(data: Mapping[str, Any], key: str) -> Any:
         "active_runtime_ms",
         "board_temperature",
         "board_humidity",
-        "next_wake_interval_minutes",
+        "last_planned_interval_seconds",
     }:
         return optional_number(data.get(key))
     return data.get(key)

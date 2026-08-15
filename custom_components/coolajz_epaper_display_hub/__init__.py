@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from .const import CONF_CONTENT, CONF_DEVICE_ID, DOMAIN, PLATFORMS
+from .const import (
+    CONF_CONTENT,
+    CONF_DEVICE_ID,
+    DOMAIN,
+    PLATFORMS,
+    TIME_SYNC_RATE_LIMIT,
+    TIME_SYNC_RATE_WINDOW,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -15,6 +22,7 @@ if TYPE_CHECKING:
 
     from .coordinator import HubCoordinator
     from .pairing import PairingManager
+    from .security import DeviceRateLimiter
     from .store import HubStore
 
     HubConfigEntry = ConfigEntry["HubRuntime"]
@@ -30,6 +38,7 @@ class HubRuntime:
     store: HubStore
     pairing: PairingManager
     coordinator: HubCoordinator
+    time_sync_limiter: DeviceRateLimiter
 
     def content_for(self, device_id: str) -> Mapping[str, Any]:
         """Return content selection for a paired device."""
@@ -46,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     from .coordinator import HubCoordinator
     from .pairing import PairingManager
+    from .security import DeviceRateLimiter
     from .store import HubStore
     from .webhook import async_register_views
 
@@ -69,7 +79,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         await store.async_save()
 
     coordinator = HubCoordinator(hass, store, entry)
-    runtime = HubRuntime(entry, store, PairingManager(store), coordinator)
+    runtime = HubRuntime(
+        entry,
+        store,
+        PairingManager(store),
+        coordinator,
+        DeviceRateLimiter(TIME_SYNC_RATE_LIMIT, TIME_SYNC_RATE_WINDOW),
+    )
     entry.runtime_data = runtime
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

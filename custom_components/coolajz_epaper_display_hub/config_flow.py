@@ -35,9 +35,9 @@ from .const import (
     CONF_MODEL,
     CONF_PROTOCOL_VERSION,
     DEFAULT_DESIRED,
+    DEFAULT_WAKE_SCHEDULE,
     DESIRED_AUTO_OTA,
     DESIRED_PARTIAL_REFRESHES,
-    DESIRED_REFRESH_INTERVAL_MINUTES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
     DESIRED_WEB_ENABLED,
     DOMAIN,
@@ -47,6 +47,8 @@ from .const import (
     SLOT_MAIN,
     SLOT_WEATHER,
     SUBENTRY_TYPE_DISPLAY,
+    WAKE_INTERVAL_OPTIONS,
+    WAKE_SCHEDULE_FIELD_PREFIX,
 )
 from .models import ProtocolError
 
@@ -78,6 +80,18 @@ def _value_slot_schema(prefix: str) -> dict[Any, Any]:
     }
 
 
+def _wake_schedule_schema() -> dict[Any, Any]:
+    """Build one constrained interval selector for every local hour."""
+    options = [str(value) for value in WAKE_INTERVAL_OPTIONS]
+    return {
+        vol.Required(
+            f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}",
+            default=str(DEFAULT_WAKE_SCHEDULE[str(hour)]),
+        ): SelectSelector(SelectSelectorConfig(options=options))
+        for hour in range(24)
+    }
+
+
 DISPLAY_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
@@ -101,17 +115,12 @@ DISPLAY_SCHEMA = vol.Schema(
             DESIRED_AUTO_OTA, default=DEFAULT_DESIRED[DESIRED_AUTO_OTA]
         ): BooleanSelector(),
         vol.Required(
-            DESIRED_REFRESH_INTERVAL_MINUTES,
-            default=DEFAULT_DESIRED[DESIRED_REFRESH_INTERVAL_MINUTES],
-        ): NumberSelector(
-            NumberSelectorConfig(min=1, max=10080, step=1, mode=NumberSelectorMode.BOX)
-        ),
-        vol.Required(
             DESIRED_PARTIAL_REFRESHES,
             default=DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
         ): NumberSelector(
             NumberSelectorConfig(min=0, max=100, step=1, mode=NumberSelectorMode.BOX)
         ),
+        **_wake_schedule_schema(),
     }
 )
 
@@ -134,8 +143,16 @@ def _content_from_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
     return content
 
 
-def _suggested_values(subentry: Any, desired: Mapping[str, Any]) -> dict[str, Any]:
+def _suggested_values(
+    subentry: Any,
+    desired: Mapping[str, Any],
+    wake_schedule: Mapping[str, Any],
+) -> dict[str, Any]:
     values: dict[str, Any] = {CONF_FRIENDLY_NAME: subentry.title, **desired}
+    for hour in range(24):
+        values[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"] = str(
+            wake_schedule.get(str(hour), DEFAULT_WAKE_SCHEDULE[str(hour)])
+        )
     content = subentry.data.get(CONF_CONTENT, {})
     for slot in (SLOT_MAIN, SLOT_BOTTOM_LEFT, SLOT_BOTTOM_RIGHT):
         selection = content.get(slot, {})
@@ -278,11 +295,12 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
             desired = {
                 key: user_input[key] for key in DEFAULT_DESIRED if key in user_input
             }
-            desired[DESIRED_REFRESH_INTERVAL_MINUTES] = int(
-                desired[DESIRED_REFRESH_INTERVAL_MINUTES]
-            )
             desired[DESIRED_PARTIAL_REFRESHES] = int(desired[DESIRED_PARTIAL_REFRESHES])
-            if record.update_desired(desired):
+            wake_schedule = {
+                str(hour): int(user_input[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"])
+                for hour in range(24)
+            }
+            if record.update_configuration(desired, wake_schedule):
                 await self._runtime.store.async_save()
             data = dict(subentry.data)
             data[CONF_CONTENT] = _content_from_input(user_input)
@@ -295,6 +313,7 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                DISPLAY_SCHEMA, _suggested_values(subentry, record.desired)
+                DISPLAY_SCHEMA,
+                _suggested_values(subentry, record.desired, record.wake_schedule),
             ),
         )

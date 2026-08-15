@@ -64,10 +64,16 @@ SENSORS = (
         device_class=SensorDeviceClass.TIMESTAMP,
     ),
     EpaperSensorDescription(
-        key="next_wake_interval",
-        telemetry_key="next_wake_interval_minutes",
+        key="next_wake_at",
+        telemetry_key="next_wake_at",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
+        key="last_planned_interval",
+        telemetry_key="last_planned_interval_seconds",
         device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.MINUTES,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     EpaperSensorDescription(

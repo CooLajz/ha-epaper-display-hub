@@ -10,6 +10,7 @@ from typing import Any
 from aiohttp import web
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.http import HomeAssistantView
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CHECKIN_PATH,
@@ -21,15 +22,20 @@ from .const import (
     PROTOCOL_HEADER,
     PROTOCOL_VERSION,
     SIGNATURE_HEADER,
+    TIME_SYNC_PATH,
     TIMESTAMP_HEADER,
 )
 from .models import ProtocolError, format_device_id, validate_checkin_payload
 from .security import (
+    canonical_json,
     canonical_request,
     canonical_response,
+    canonical_time_request,
+    canonical_time_response,
     remember_nonce,
     sign,
     validate_freshness,
+    validate_nonce,
     verify_signature,
 )
 
@@ -134,8 +140,12 @@ class CheckinView(HomeAssistantView):
             remember_nonce(record, nonce)
             await runtime.store.async_save()
             content = runtime.content_for(device_id)
+            response_created_at = datetime.now(UTC).replace(microsecond=0)
             response_payload = await runtime.coordinator.async_process_checkin(
-                record, payload, content
+                record,
+                payload,
+                content,
+                response_time=response_created_at,
             )
             response_body = json.dumps(
                 response_payload,
@@ -143,7 +153,7 @@ class CheckinView(HomeAssistantView):
                 separators=(",", ":"),
                 sort_keys=True,
             ).encode("utf-8")
-            response_time = int(datetime.now(UTC).timestamp())
+            response_time = int(response_created_at.timestamp())
             signature = sign(
                 record.secret,
                 canonical_response(
@@ -169,8 +179,82 @@ class CheckinView(HomeAssistantView):
             return _json_response({"error": code}, 401)
 
 
+class TimeSyncView(HomeAssistantView):
+    """Restore trusted UTC time without weakening check-in freshness."""
+
+    url = TIME_SYNC_PATH
+    name = f"api:{DOMAIN}:time_sync"
+    requires_auth = False
+
+    async def post(self, request: web.Request) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        runtime = next(iter(hass.data.get(DOMAIN, {}).values()), None)
+        if runtime is None:
+            return _json_response({"error": "hub_not_ready"}, 503)
+        try:
+            body, payload = await _read_json(request)
+            if set(payload) != {"protocol_version", "device_id", "nonce"}:
+                raise ProtocolError(
+                    "invalid_payload", "Time sync accepts only protocol, device, nonce"
+                )
+            if int(payload.get("protocol_version", 0)) != PROTOCOL_VERSION:
+                raise ProtocolError(
+                    "unsupported_protocol", "Unsupported protocol version"
+                )
+            device_id = format_device_id(str(payload.get("device_id", "")))
+            nonce = str(payload.get("nonce", ""))
+            record = runtime.store.devices.get(device_id)
+            if record is None:
+                raise ProtocolError("unknown_device", "Device is not paired")
+            validate_nonce(nonce, record)
+            canonical = canonical_time_request(
+                request.method, request.path, device_id, nonce, body
+            )
+            supplied = request.headers.get(SIGNATURE_HEADER, "")
+            if not verify_signature(record.secret, canonical, supplied):
+                raise ProtocolError(
+                    "invalid_signature", "Signature verification failed"
+                )
+            if not runtime.time_sync_limiter.allow(device_id):
+                return _json_response({"error": "rate_limited"}, 429)
+
+            remember_nonce(record, nonce)
+            await runtime.store.async_save()
+            response_created_at = datetime.now(UTC).replace(microsecond=0)
+            timezone = dt_util.get_time_zone(hass.config.time_zone) or UTC
+            response_payload = {
+                "protocol_version": PROTOCOL_VERSION,
+                "device_id": device_id,
+                "server_time": int(response_created_at.timestamp()),
+                "server_time_iso": response_created_at.astimezone(timezone).isoformat(),
+            }
+            response_body = canonical_json(response_payload)
+            signature = sign(
+                record.secret,
+                canonical_time_response(
+                    200, request.path, device_id, nonce, response_body
+                ),
+            )
+            return web.Response(
+                body=response_body,
+                status=200,
+                content_type="application/json",
+                headers={
+                    SIGNATURE_HEADER: signature,
+                    DEVICE_HEADER: device_id,
+                    PROTOCOL_HEADER: str(PROTOCOL_VERSION),
+                    NONCE_HEADER: nonce,
+                },
+            )
+        except (ProtocolError, ValueError) as err:
+            code = err.code if isinstance(err, ProtocolError) else "invalid_payload"
+            _LOGGER.debug("Rejected display time sync: %s", code)
+            return _json_response({"error": code}, 401)
+
+
 def async_register_views(hass: HomeAssistant) -> None:
     """Register the protocol surface once per Home Assistant process."""
     hass.http.register_view(PairRegisterView)
     hass.http.register_view(PairClaimView)
     hass.http.register_view(CheckinView)
+    hass.http.register_view(TimeSyncView)
