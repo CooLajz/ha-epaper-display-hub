@@ -18,6 +18,10 @@ test = [
   "ruff>=0.11"
 ]
 
+[tool.setuptools.packages.find]
+include = ["custom_components*"]
+namespaces = true
+
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"

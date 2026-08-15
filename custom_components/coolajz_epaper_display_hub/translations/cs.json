@@ -14,6 +14,11 @@
   "config_subentries": {
     "display": {
       "title": "Displej",
+      "entry_type": "Displej",
+      "initiate_flow": {
+        "user": "Přidat displej",
+        "reconfigure": "Nastavit displej"
+      },
       "step": {
         "user": {
           "title": "Přidání displeje",

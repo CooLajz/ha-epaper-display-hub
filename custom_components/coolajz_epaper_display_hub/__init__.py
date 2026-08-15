@@ -40,15 +40,6 @@ class HubRuntime:
         return {}
 
 
-async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Register the shared HTTP views once."""
-    from .webhook import async_register_views
-
-    hass.data.setdefault(DOMAIN, {})
-    async_register_views(hass)
-    return True
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up the single hub config entry."""
     from homeassistant.helpers.event import async_track_time_interval
@@ -56,6 +47,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     from .coordinator import HubCoordinator
     from .pairing import PairingManager
     from .store import HubStore
+    from .webhook import async_register_views
+
+    views_key = f"{DOMAIN}_views_registered"
+    if not hass.data.get(views_key):
+        async_register_views(hass)
+        hass.data[views_key] = True
 
     store = HubStore(hass)
     await store.async_load()

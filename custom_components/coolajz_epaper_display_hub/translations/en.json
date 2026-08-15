@@ -14,6 +14,11 @@
   "config_subentries": {
     "display": {
       "title": "Display",
+      "entry_type": "Display",
+      "initiate_flow": {
+        "user": "Add display",
+        "reconfigure": "Configure display"
+      },
       "step": {
         "user": {
           "title": "Add a display",

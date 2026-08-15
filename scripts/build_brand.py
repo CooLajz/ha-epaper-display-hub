@@ -24,5 +24,11 @@ draw.line(((98, 220), (158, 220)), fill="white", width=12)
 for x in (98, 158):
     draw.ellipse((x - 6, 214, x + 6, 226), fill="white")
 
-output = Path(__file__).parents[1] / "brand" / "icon.png"
+output = (
+    Path(__file__).parents[1]
+    / "custom_components"
+    / "coolajz_epaper_display_hub"
+    / "brand"
+    / "icon.png"
+)
 image.save(output, format="PNG", optimize=True)
