@@ -8,27 +8,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
-from .migration import migrate_storage_data
 from .models import DeviceRecord
-
-
-class HubStateStore(Store[dict[str, Any]]):
-    """Private Store with an explicit future migration hook."""
-
-    async def _async_migrate_func(
-        self,
-        old_major_version: int,
-        old_minor_version: int,
-        old_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        return migrate_storage_data(old_major_version, old_minor_version, old_data)
 
 
 class HubStore:
     """Own the private per-device keys and durable protocol state."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        self._store = HubStateStore(
+        self._store = Store[dict[str, Any]](
             hass, STORAGE_VERSION, STORAGE_KEY, private=True, atomic_writes=True
         )
         self.devices: dict[str, DeviceRecord] = {}

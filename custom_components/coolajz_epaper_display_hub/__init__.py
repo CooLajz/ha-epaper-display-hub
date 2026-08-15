@@ -49,7 +49,6 @@ class HubRuntime:
 
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up the single hub config entry."""
-    from homeassistant.helpers import entity_registry as er
     from homeassistant.helpers.event import async_track_time_interval
 
     from .coordinator import HubCoordinator
@@ -75,18 +74,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         store.devices.pop(device_id, None)
     if removed_ids:
         await store.async_save()
-
-    entity_registry = er.async_get(hass)
-    for device_id in configured_ids:
-        for platform, key in (
-            ("switch", "web_enabled"),
-            ("time", "ota_check_time"),
-        ):
-            retired_entity_id = entity_registry.async_get_entity_id(
-                platform, DOMAIN, f"{device_id}-{key}"
-            )
-            if retired_entity_id is not None:
-                entity_registry.async_remove(retired_entity_id)
 
     coordinator = HubCoordinator(hass, store, entry)
     runtime = HubRuntime(
@@ -126,12 +113,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool
 async def _async_reload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> None:
     """Reload after a display is added, reconfigured, or removed."""
     await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate future config-entry schemas without silently discarding data."""
-    if entry.version > 1:
-        return False
-    if entry.version < 1:
-        hass.config_entries.async_update_entry(entry, version=1, minor_version=1)
-    return True

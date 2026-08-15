@@ -212,7 +212,6 @@ class EpaperHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Create exactly one hub and expose display subentry flows."""
 
     VERSION = 1
-    MINOR_VERSION = 1
 
     @classmethod
     @callback

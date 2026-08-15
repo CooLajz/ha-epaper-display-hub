@@ -33,23 +33,13 @@ class FakeHass:
         self.states = FakeStates(states)
 
 
-def test_partial_refresh_count_is_limited_and_old_values_are_migrated() -> None:
+def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
     assert normalize_partial_refreshes(0) == 0
     assert normalize_partial_refreshes(20) == 20
     with pytest.raises(ProtocolError, match="outside 0 to 20"):
         normalize_partial_refreshes(21)
     with pytest.raises(ProtocolError, match="must be whole"):
         normalize_partial_refreshes(1.5)
-
-    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
-    stored = record.as_dict()
-    stored["desired"]["partial_refreshes_between_full"] = 100
-    old_revision = stored["desired_revision"]
-
-    restored = DeviceRecord.from_dict(stored)
-
-    assert restored.desired["partial_refreshes_between_full"] == 20
-    assert restored.desired_revision == old_revision + 1
 
 
 def test_complete_and_partial_telemetry_capabilities() -> None:
@@ -178,14 +168,3 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     )
     assert not restored.configuration_pending
     assert not restored.configuration_application_pending
-
-
-def test_legacy_web_enabled_is_removed_from_stored_desired_config() -> None:
-    """Hub-only firmware must not receive the retired local-web setting."""
-    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
-    stored = record.as_dict()
-    stored["desired"] = {**stored["desired"], "web_enabled": True}
-
-    restored = DeviceRecord.from_dict(stored)
-
-    assert "web_enabled" not in restored.desired

@@ -138,52 +138,16 @@ class DeviceRecord:
             desired.update(
                 {key: stored_desired[key] for key in desired if key in stored_desired}
             )
-        stored_partial_refreshes = desired[DESIRED_PARTIAL_REFRESHES]
-        try:
-            normalized_partial_refreshes = normalize_partial_refreshes(
-                stored_partial_refreshes
-            )
-        except ProtocolError:
-            try:
-                numeric_partial_refreshes = int(stored_partial_refreshes)
-            except (TypeError, ValueError):
-                numeric_partial_refreshes = DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES]
-            normalized_partial_refreshes = min(
-                MAX_PARTIAL_REFRESHES,
-                max(MIN_PARTIAL_REFRESHES, numeric_partial_refreshes),
-            )
-        partial_refreshes_migrated = (
-            stored_partial_refreshes != normalized_partial_refreshes
-        )
-        desired[DESIRED_PARTIAL_REFRESHES] = normalized_partial_refreshes
-        legacy_schedule = (
-            stored_desired.get("wake_schedule")
-            if isinstance(stored_desired, Mapping)
-            else None
-        )
-        legacy_auto_ota = isinstance(stored_desired, Mapping) and (
-            "auto_ota" in stored_desired
+        desired[DESIRED_PARTIAL_REFRESHES] = normalize_partial_refreshes(
+            desired[DESIRED_PARTIAL_REFRESHES]
         )
         desired_revision = max(1, int(data.get("desired_revision", 1)))
-        if legacy_auto_ota or partial_refreshes_migrated:
-            # Both migrations change the firmware-facing desired payload.
-            desired_revision += 1
         applied_revision = max(0, int(data.get("applied_revision", 0)))
-        automatic_ota_enabled = bool(
-            data.get(
-                "automatic_ota_enabled",
-                stored_desired.get("auto_ota", False)
-                if isinstance(stored_desired, Mapping)
-                else False,
-            )
-        )
         return cls(
             device_id=format_device_id(str(data["device_id"])),
             secret=str(data["secret"]),
             desired=desired,
-            wake_schedule=normalize_wake_schedule(
-                data.get("wake_schedule", legacy_schedule)
-            ),
+            wake_schedule=normalize_wake_schedule(data.get("wake_schedule")),
             desired_revision=desired_revision,
             reported=dict(data.get("reported", {})),
             reported_revision=max(0, int(data.get("reported_revision", 0))),
@@ -210,7 +174,7 @@ class DeviceRecord:
                 if isinstance(data.get("last_entity_data"), Mapping)
                 else {}
             ),
-            automatic_ota_enabled=automatic_ota_enabled,
+            automatic_ota_enabled=bool(data.get("automatic_ota_enabled", False)),
             ota_check_time=normalize_ota_check_time(
                 data.get("ota_check_time", DEFAULT_OTA_CHECK_TIME)
             ),

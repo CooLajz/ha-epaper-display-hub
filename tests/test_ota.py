@@ -127,22 +127,6 @@ def test_ota_settings_and_delivered_queue_survive_storage_round_trip() -> None:
     assert restored.commands_for_delivery() == [
         {"id": "manual-1", "type": "ota_check"}
     ]
-
-
-def test_legacy_auto_ota_moves_out_of_firmware_desired_config() -> None:
-    record = _record()
-    stored = record.as_dict()
-    stored["desired"] = {**stored["desired"], "auto_ota": True}
-    stored.pop("automatic_ota_enabled")
-    previous_revision = stored["desired_revision"]
-
-    restored = DeviceRecord.from_dict(stored)
-
-    assert restored.automatic_ota_enabled
-    assert "auto_ota" not in restored.desired
-    assert restored.desired_revision == previous_revision + 1
-
-
 def test_ota_diagnostics_and_acknowledgements_are_validated() -> None:
     payload = {
         "protocol_version": 1,

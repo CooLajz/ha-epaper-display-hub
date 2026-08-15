@@ -9,7 +9,7 @@ The reference implementation is maintained separately in
 the source of truth for the Hub API and interoperability contract; firmware changes,
 builds, USB flashing, and physical display validation belong in that firmware project.
 
-Recommended firmware migration order:
+Recommended firmware implementation order:
 
 1. Keep the signed response as an atomic input: validate its HMAC and complete schema
    before applying configuration or changing the e-ink image.
@@ -20,7 +20,7 @@ Recommended firmware migration order:
    the Hub accepted them.
 5. Treat `ota_check` as an idempotent durable command. Persist its ID before starting
    the check and acknowledge it only after the outcome rules below are satisfied.
-6. After feature parity is physically verified, remove the legacy token client, local
+6. After feature parity is physically verified, remove the previous token client, local
    configuration web, local wake scheduler, and alternate non-Hub runtime paths from
    the firmware repository.
 
