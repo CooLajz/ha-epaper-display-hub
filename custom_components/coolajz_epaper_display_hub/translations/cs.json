@@ -1,0 +1,99 @@
+{
+  "title": "E-paper Display Hub",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení E-paper Display Hub",
+        "description": "Vytvořte místní hub. Jednotlivé displeje se přidávají samostatně po dokončení nastavení."
+      }
+    },
+    "abort": {
+      "already_configured": "E-paper Display Hub je již nastavený."
+    }
+  },
+  "config_subentries": {
+    "display": {
+      "title": "Displej",
+      "step": {
+        "user": {
+          "title": "Přidání displeje",
+          "description": "Zvolte název displeje. Následně se vytvoří dočasný párovací kód.",
+          "data": {"friendly_name": "Název displeje"}
+        },
+        "pair": {
+          "title": "Párování displeje",
+          "description": "Ve webovém rozhraní displeje zadejte místní URL Home Assistanta a párovací kód **{pairing_code}**. Registrační endpoint: `{register_path}`. Potom pokračujte kontrolou registrace.",
+          "data": {"refresh": "Zkontrolovat registraci"}
+        },
+        "confirm": {
+          "title": "Potvrzení displeje",
+          "description": "Potvrďte párování zařízení **{device_id}**, model **{model}**, firmware **{firmware_version}**. Samostatný klíč zařízení bude vydán až po tomto potvrzení.",
+          "data": {"confirm": "Potvrdit tento displej"}
+        },
+        "reconfigure": {
+          "title": "Nastavení displeje",
+          "description": "Vyberte obsah a požadovanou konfiguraci. Spící displej změny převezme při některém z příštích spojení.",
+          "data": {
+            "friendly_name": "Název displeje",
+            "main_entity": "Hlavní horní entita",
+            "main_type": "Typ hlavní hodnoty",
+            "main_label": "Popisek hlavní hodnoty",
+            "main_decimals": "Desetinná místa hlavní hodnoty",
+            "main_unit": "Vlastní jednotka hlavní hodnoty",
+            "bottom_left_entity": "Levá dolní entita",
+            "bottom_left_type": "Typ levé dolní hodnoty",
+            "bottom_left_label": "Popisek levé dolní hodnoty",
+            "bottom_left_decimals": "Desetinná místa levé dolní hodnoty",
+            "bottom_left_unit": "Vlastní jednotka levé dolní hodnoty",
+            "bottom_right_entity": "Pravá dolní entita",
+            "bottom_right_type": "Typ pravé dolní hodnoty",
+            "bottom_right_label": "Popisek pravé dolní hodnoty",
+            "bottom_right_decimals": "Desetinná místa pravé dolní hodnoty",
+            "bottom_right_unit": "Vlastní jednotka pravé dolní hodnoty",
+            "weather": "Entita počasí",
+            "extra_humidity": "Entita doplňkové vlhkosti",
+            "web_enabled": "Zapnuté webové rozhraní",
+            "show_battery_voltage": "Zobrazovat napětí baterie",
+            "auto_ota": "Automatické OTA aktualizace",
+            "refresh_interval_minutes": "Výchozí interval obnovování (minuty)",
+            "partial_refreshes_between_full": "Počet partial refreshů mezi full refreshi"
+          }
+        }
+      },
+      "error": {
+        "device_not_registered": "S tímto kódem se zatím žádný displej nezaregistroval."
+      },
+      "abort": {
+        "already_configured": "Tato MAC adresa je již nastavená.",
+        "device_not_registered": "Před potvrzením se nezaregistroval žádný displej.",
+        "pairing_expired": "Platnost párování skončila. Zahajte je znovu.",
+        "unknown_device": "Chybí záznam klíče tohoto displeje.",
+        "reconfigure_successful": "Nastavení displeje bylo aktualizováno."
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {"name": "Baterie"},
+      "battery_voltage": {"name": "Napětí baterie"},
+      "last_contact": {"name": "Poslední kontakt"},
+      "last_refresh": {"name": "Poslední refresh displeje"},
+      "next_wake_interval": {"name": "Interval příštího probuzení"},
+      "active_runtime": {"name": "Poslední aktivní doba"},
+      "rssi": {"name": "RSSI"},
+      "firmware_version": {"name": "Verze firmwaru"},
+      "board_temperature": {"name": "Teplota desky"},
+      "board_humidity": {"name": "Vlhkost desky"}
+    },
+    "binary_sensor": {
+      "available": {"name": "Dostupný"},
+      "configuration_pending": {"name": "Čekající konfigurace"},
+      "last_transfer_success": {"name": "Poslední přenos úspěšný"}
+    },
+    "switch": {
+      "web_enabled": {"name": "Webové rozhraní"},
+      "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
+      "auto_ota": {"name": "Automatické OTA aktualizace"}
+    }
+  }
+}

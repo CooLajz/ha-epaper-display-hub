@@ -1,0 +1,99 @@
+{
+  "title": "E-paper Display Hub",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up E-paper Display Hub",
+        "description": "Create the local hub. Displays are added separately after setup."
+      }
+    },
+    "abort": {
+      "already_configured": "E-paper Display Hub is already configured."
+    }
+  },
+  "config_subentries": {
+    "display": {
+      "title": "Display",
+      "step": {
+        "user": {
+          "title": "Add a display",
+          "description": "Choose the display name. A temporary pairing code will be generated.",
+          "data": {"friendly_name": "Display name"}
+        },
+        "pair": {
+          "title": "Pair the display",
+          "description": "Enter Home Assistant's local URL and pairing code **{pairing_code}** in the display web interface. Registration endpoint: `{register_path}`. Then continue to check registration.",
+          "data": {"refresh": "Check registration"}
+        },
+        "confirm": {
+          "title": "Confirm the display",
+          "description": "Confirm pairing for **{device_id}**, model **{model}**, firmware **{firmware_version}**. The device-specific key is issued only after this confirmation.",
+          "data": {"confirm": "Confirm this display"}
+        },
+        "reconfigure": {
+          "title": "Configure the display",
+          "description": "Choose content and desired configuration. A sleeping display applies changes during a later check-in.",
+          "data": {
+            "friendly_name": "Display name",
+            "main_entity": "Main top entity",
+            "main_type": "Main value type",
+            "main_label": "Main label",
+            "main_decimals": "Main decimal places",
+            "main_unit": "Main unit override",
+            "bottom_left_entity": "Bottom-left entity",
+            "bottom_left_type": "Bottom-left value type",
+            "bottom_left_label": "Bottom-left label",
+            "bottom_left_decimals": "Bottom-left decimal places",
+            "bottom_left_unit": "Bottom-left unit override",
+            "bottom_right_entity": "Bottom-right entity",
+            "bottom_right_type": "Bottom-right value type",
+            "bottom_right_label": "Bottom-right label",
+            "bottom_right_decimals": "Bottom-right decimal places",
+            "bottom_right_unit": "Bottom-right unit override",
+            "weather": "Weather entity",
+            "extra_humidity": "Additional humidity entity",
+            "web_enabled": "Web interface enabled",
+            "show_battery_voltage": "Show battery voltage",
+            "auto_ota": "Automatic OTA updates",
+            "refresh_interval_minutes": "Default refresh interval (minutes)",
+            "partial_refreshes_between_full": "Partial refreshes between full refreshes"
+          }
+        }
+      },
+      "error": {
+        "device_not_registered": "No display has registered with this code yet."
+      },
+      "abort": {
+        "already_configured": "This MAC address is already configured.",
+        "device_not_registered": "No display registered before confirmation.",
+        "pairing_expired": "The pairing session expired. Start again.",
+        "unknown_device": "The display key record is missing.",
+        "reconfigure_successful": "Display configuration was updated."
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {"name": "Battery"},
+      "battery_voltage": {"name": "Battery voltage"},
+      "last_contact": {"name": "Last contact"},
+      "last_refresh": {"name": "Last display refresh"},
+      "next_wake_interval": {"name": "Next wake interval"},
+      "active_runtime": {"name": "Last active runtime"},
+      "rssi": {"name": "RSSI"},
+      "firmware_version": {"name": "Firmware version"},
+      "board_temperature": {"name": "Board temperature"},
+      "board_humidity": {"name": "Board humidity"}
+    },
+    "binary_sensor": {
+      "available": {"name": "Available"},
+      "configuration_pending": {"name": "Configuration pending"},
+      "last_transfer_success": {"name": "Last transfer successful"}
+    },
+    "switch": {
+      "web_enabled": {"name": "Web interface"},
+      "show_battery_voltage": {"name": "Show battery voltage"},
+      "auto_ota": {"name": "Automatic OTA updates"}
+    }
+  }
+}

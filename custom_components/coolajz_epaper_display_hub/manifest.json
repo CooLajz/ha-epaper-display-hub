@@ -1,0 +1,12 @@
+{
+  "codeowners": ["@coolajz"],
+  "config_flow": true,
+  "documentation": "https://github.com/coolajz/ha-epaper-display-hub",
+  "domain": "coolajz_epaper_display_hub",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/coolajz/ha-epaper-display-hub/issues",
+  "name": "E-paper Display Hub",
+  "requirements": [],
+  "version": "0.1.0"
+}
