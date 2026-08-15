@@ -517,6 +517,7 @@ def normalize_state(
         "value": round(number, decimals) if valid and number is not None else None,
         "type": value_type,
         "label": label or attributes.get("friendly_name"),
+        "decimals": decimals,
         "unit": unit if unit is not None else native_unit,
     }
 
@@ -557,6 +558,6 @@ def normalize_content(hass: Any, content: Mapping[str, Any]) -> dict[str, Any]:
         hass.states.get(humidity_id) if isinstance(humidity_id, str) else None
     )
     result["extra_humidity"] = normalize_state(
-        humidity_state, configured_type="humidity"
+        humidity_state, configured_type="humidity", decimals=0
     )
     return result

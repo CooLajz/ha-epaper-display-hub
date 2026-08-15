@@ -370,6 +370,7 @@ one-time commands. A bad source entity affects only its own item:
       "value": 24.1,
       "type": "temperature",
       "label": "Living room",
+      "decimals": 1,
       "unit": "°C"
     },
     "bottom_left": {"valid": false, "value": null},
@@ -385,6 +386,12 @@ one-time commands. A bad source entity affects only its own item:
   ]
 }
 ```
+
+For every configured numeric slot, `decimals` is an integer from `0` through `3`
+and is authoritative for rendering the numeric value. It is independent of automatic
+or manually selected value type detection. In particular, firmware must preserve an
+explicit `0` and must not replace it with a template-specific default. The Hub rounds
+`value` to the same precision before signing the response.
 
 The response repeats all request headers except the timestamp and signature values.
 Its signature uses this separate context, preventing request/response reflection:

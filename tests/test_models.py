@@ -109,7 +109,29 @@ def test_unknown_unavailable_missing_and_manual_type() -> None:
         "value": 1001.2,
         "type": "number",
         "label": None,
+        "decimals": 1,
         "unit": "hPa",
+    }
+
+
+def test_auto_type_preserves_explicit_zero_decimal_places() -> None:
+    """Automatic type detection must not replace an explicit zero precision."""
+    normalized = normalize_state(
+        FakeState(
+            "1245.67",
+            {"device_class": "power", "unit_of_measurement": "W"},
+        ),
+        configured_type="auto",
+        decimals=0,
+    )
+
+    assert normalized == {
+        "valid": True,
+        "value": 1246.0,
+        "type": "number",
+        "label": None,
+        "decimals": 0,
+        "unit": "W",
     }
 
 
@@ -138,6 +160,7 @@ def test_content_and_weather_normalization_is_fault_isolated() -> None:
         "value": None,
         "type": "number",
         "label": None,
+        "decimals": 1,
         "unit": None,
     }
     assert result["weather"]["valid"] is True
