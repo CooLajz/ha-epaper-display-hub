@@ -183,20 +183,6 @@ class DeviceRecord:
         self.capabilities_seen = sorted(seen)
 
 
-@dataclass(slots=True)
-class PairingSession:
-    """Short-lived pairing transaction."""
-
-    code_digest: str
-    expires_at: datetime
-    friendly_name: str
-    candidate: dict[str, Any] | None = None
-    claim_token_digest: str | None = None
-    claim_expires_at: datetime | None = None
-    secret: str | None = None
-    confirmed: bool = False
-
-
 def validate_checkin_payload(payload: Mapping[str, Any], device_id: str) -> None:
     """Validate the required check-in envelope while allowing optional telemetry."""
     if int(payload.get("protocol_version", 0)) != PROTOCOL_VERSION:

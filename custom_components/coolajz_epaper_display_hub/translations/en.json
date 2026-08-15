@@ -21,18 +21,25 @@
       "step": {
         "user": {
           "title": "Add a display",
-          "description": "Choose the display name. A temporary pairing code will be generated.",
-          "data": {"friendly_name": "Display name"}
-        },
-        "pair": {
-          "title": "Pair the display",
-          "description": "Enter Home Assistant's local URL and pairing code **{pairing_code}** in the display web interface. Registration endpoint: `{register_path}`. Then continue to check registration.",
-          "data": {"refresh": "Check registration"}
+          "description": "Provision Wi-Fi with Improv Serial first. While the display shows its IP address and eight-digit PIN, enter both values here. Pairing uses the trusted local network and does not follow redirects.",
+          "data": {
+            "friendly_name": "Display name",
+            "device_ip": "Display local IPv4 address",
+            "pairing_pin": "Eight-digit PIN"
+          }
         },
         "confirm": {
           "title": "Confirm the display",
-          "description": "Confirm pairing for **{device_id}**, model **{model}**, firmware **{firmware_version}**. The device-specific key is issued only after this confirmation.",
-          "data": {"confirm": "Confirm this display"}
+          "description": "Confirm **{device_id}**, model **{model}**, hardware **{hardware_variant}**, firmware **{firmware_version}**. The display will use Home Assistant URL **{hub_url}** with transport mode **{transport_security}**.",
+          "data": {
+            "confirm": "Confirm this display",
+            "allow_insecure_tls": "Use HTTPS without certificate verification"
+          }
+        },
+        "insecure_warning": {
+          "title": "Confirm unverified HTTPS",
+          "description": "The connection will be encrypted, but the display will not be able to verify the identity of the Home Assistant server.",
+          "data": {"confirm": "I understand and want to continue"}
         },
         "reconfigure": {
           "title": "Configure the display",
@@ -88,12 +95,34 @@
         }
       },
       "error": {
-        "device_not_registered": "No display has registered with this code yet."
+        "confirmation_required": "Confirmation is required to continue.",
+        "device_unavailable": "The display is unavailable at this local address.",
+        "empty_metadata": "The display returned incomplete identity information.",
+        "hub_url_invalid": "The configured Home Assistant internal URL is invalid.",
+        "hub_url_unavailable": "Configure an internal Home Assistant URL before pairing.",
+        "invalid_device_key": "The integration generated a device key in an invalid format.",
+        "invalid_device_id": "The display returned an invalid MAC address.",
+        "invalid_ip": "Enter an explicit local IPv4 address.",
+        "invalid_json": "The display returned invalid JSON.",
+        "invalid_name": "The display name must contain 1 to 63 characters.",
+        "invalid_pin": "The PIN must contain eight digits and must match the display.",
+        "invalid_proof": "The display's pairing proof could not be verified.",
+        "invalid_transaction": "The integration generated an invalid pairing transaction identifier.",
+        "invalid_transport": "The selected transport security mode is unsupported.",
+        "not_pairing": "The display is not in pairing mode.",
+        "pairing_failed": "The display did not complete pairing.",
+        "payload_too_large": "The pairing configuration is too large.",
+        "rate_limited": "Too many pairing attempts. Wait and try again.",
+        "redirect_rejected": "The display attempted to redirect the request.",
+        "response_too_large": "The display response is too large.",
+        "timeout": "The display did not respond in time.",
+        "transaction_mismatch": "The display answered for a different pairing transaction.",
+        "device_mismatch": "The pairing response came from a different display.",
+        "unsupported_protocol": "The display uses an unsupported protocol version."
       },
       "abort": {
         "already_configured": "This MAC address is already configured.",
-        "device_not_registered": "No display registered before confirmation.",
-        "pairing_expired": "The pairing session expired. Start again.",
+        "pairing_expired": "The pairing flow lost its state. Start again.",
         "unknown_device": "The display key record is missing.",
         "reconfigure_successful": "Display configuration was updated."
       }

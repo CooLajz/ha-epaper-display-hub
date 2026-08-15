@@ -25,8 +25,8 @@ No firmware repository was modified while preparing this integration.
 
 - Home Assistant 2026.8.0 or newer.
 - HACS with support for custom integration repositories.
-- A direct local URL reachable from the display. HTTPS is strongly recommended for
-  pairing and whenever payload confidentiality matters.
+- A configured Home Assistant internal URL reachable from the display. HTTPS with
+  certificate verification is strongly recommended for normal operation.
 
 In HACS, open Custom repositories, add
 `https://github.com/coolajz/ha-epaper-display-hub` as an Integration, install it, and
@@ -38,12 +38,18 @@ choose **E-paper Display Hub**.
 ## Pair a display
 
 1. Open the E-paper Display Hub integration and choose **Add entry → Display**.
-2. Enter a friendly name. Home Assistant shows a temporary eight-digit code.
-3. In the display web UI enter the Home Assistant local URL, the code, and friendly
-   name. The firmware sends its MAC, model, hardware variant, firmware, and protocol.
-4. Verify the device details shown in Home Assistant and confirm them.
-5. The display claims its own random key. The pairing code and claim transaction then
-   expire.
+2. Provision the display's Wi-Fi with Improv Serial. The unpaired display temporarily
+   shows its local IPv4 address and an eight-digit PIN.
+3. Enter a friendly name, the displayed IPv4 address, and PIN in Home Assistant.
+4. Verify the MAC, model, hardware, firmware, and the internal Home Assistant URL,
+   then confirm.
+5. Home Assistant sends a unique key to the display and creates the subentry only
+   after verifying the display's HMAC proof.
+
+The integration derives transport from Home Assistant's internal URL. An `http://`
+URL uses local HTTP. An `https://` URL defaults to full certificate and hostname
+verification. HTTPS without certificate verification is available only as an
+explicit opt-in followed by a separate warning; there is no automatic downgrade.
 
 Each display is a Config Subentry and owns exactly one Device Registry device. Its
 normalized MAC is the unique ID. Displays can be renamed and reconfigured
@@ -77,9 +83,9 @@ capabilities, pending commands, and wake-planning diagnostics are persisted.
 
 - HMAC provides authentication and integrity, not encryption. Local HTTP is visible
   to passive observers. Use HTTPS with certificate validation for confidentiality.
-- Initial key delivery is safe from modification by the short-lived transaction and
-  user confirmation, but only HTTPS or an isolated trusted network prevents passive
-  key capture.
+- The temporary device pairing endpoint itself uses local HTTP. The nonce-like
+  transaction and HMAC proof detect mismatches, but only a trusted or isolated local
+  network prevents passive capture of the initial key.
 - Keys are stored in Home Assistant `.storage` and backups. Protect both.
 - A device needs trustworthy UTC time for replay protection after full power loss.
 - Protocol v1 restores that time through the nonce-bound, per-device HMAC-signed
@@ -100,9 +106,10 @@ display again.
 ## Development validation
 
 The repository includes pytest, Ruff, mypy, HACS validation, and hassfest workflows.
-Local unit tests cover protocol canonicalization, key isolation, replay handling,
-pairing expiry, telemetry capability rules, desired/reported revisions, durable
-commands, content normalization, hourly boundaries, and daylight-saving transitions.
+Local unit tests cover protocol canonicalization, pairing identity validation,
+idempotent transaction reuse, HMAC proof binding, replay handling, telemetry
+capability rules, desired/reported revisions, durable commands, content normalization,
+hourly boundaries, and daylight-saving transitions.
 The suite also covers signed time recovery, nonce binding, invalid signatures,
 unknown devices, short nonces, replay rejection, and per-device rate limiting. A real
 Home Assistant runtime is still required

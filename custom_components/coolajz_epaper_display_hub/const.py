@@ -15,14 +15,9 @@ PLATFORMS = ["sensor", "binary_sensor", "switch"]
 SUBENTRY_TYPE_DISPLAY = "display"
 
 API_BASE = f"/api/{DOMAIN}/v1"
-PAIR_REGISTER_PATH = f"{API_BASE}/pair/register"
-PAIR_CLAIM_PATH = f"{API_BASE}/pair/claim"
 CHECKIN_PATH = f"{API_BASE}/check-in"
 TIME_SYNC_PATH = f"{API_BASE}/time-sync"
 
-PAIRING_TTL = timedelta(minutes=10)
-PAIRING_CODE_LENGTH = 8
-CLAIM_TTL = timedelta(minutes=10)
 NONCE_HISTORY_SIZE = 64
 MIN_REPLAY_WINDOW = timedelta(hours=24)
 MAX_REPLAY_WINDOW = timedelta(days=7)
@@ -42,6 +37,20 @@ CONF_HARDWARE_VARIANT = "hardware_variant"
 CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_PROTOCOL_VERSION = "protocol_version"
 CONF_CONTENT = "content"
+CONF_DEVICE_IP = "device_ip"
+CONF_PAIRING_PIN = "pairing_pin"
+CONF_TRANSPORT_SECURITY = "transport_security"
+CONF_HUB_URL = "hub_url"
+CONF_ALLOW_INSECURE_TLS = "allow_insecure_tls"
+
+TRANSPORT_HTTP = "http"
+TRANSPORT_HTTPS_VERIFIED = "https_verified"
+TRANSPORT_HTTPS_INSECURE = "https_insecure"
+TRANSPORT_SECURITY_OPTIONS = (
+    TRANSPORT_HTTPS_VERIFIED,
+    TRANSPORT_HTTPS_INSECURE,
+    TRANSPORT_HTTP,
+)
 
 DESIRED_WEB_ENABLED = "web_enabled"
 DESIRED_SHOW_BATTERY_VOLTAGE = "show_battery_voltage"

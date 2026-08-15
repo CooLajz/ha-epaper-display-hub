@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,14 +19,25 @@ from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
+    CONF_ALLOW_INSECURE_TLS,
+    CONF_DEVICE_IP,
+    CONF_FRIENDLY_NAME,
+    CONF_PAIRING_PIN,
+    CONF_TRANSPORT_SECURITY,
     DOMAIN,
     NONCE_HEADER,
     SIGNATURE_HEADER,
     SUBENTRY_TYPE_DISPLAY,
     TIME_SYNC_PATH,
+    TRANSPORT_HTTPS_INSECURE,
+    TRANSPORT_HTTPS_VERIFIED,
 )
 from custom_components.coolajz_epaper_display_hub.models import (  # noqa: E402
     DeviceRecord,
+    ProtocolError,
+)
+from custom_components.coolajz_epaper_display_hub.pairing import (  # noqa: E402
+    DeviceIdentity,
 )
 from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E402
     canonical_json,
@@ -37,17 +49,7 @@ from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E40
     verify_signature,
 )
 
-
-def _registration(code: str) -> dict[str, Any]:
-    return {
-        "protocol_version": 1,
-        "pairing_code": code,
-        "device_id": "AA:BB:CC:DD:EE:FF",
-        "friendly_name": "Test display",
-        "model": "ESPink 4.2",
-        "hardware_variant": "ESP32-S3",
-        "firmware_version": "1.0.0",
-    }
+IDENTITY = DeviceIdentity("AA:BB:CC:DD:EE:FF", "ESPink 4.2", "ESP32-S3", "1.0.0")
 
 
 async def test_create_main_config_entry(hass: HomeAssistant) -> None:
@@ -67,25 +69,50 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
 
-    result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
-        context={"source": config_entries.SOURCE_USER},
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"friendly_name": "Test display"}
-    )
-    code = result["description_placeholders"]["pairing_code"]
-    entry.runtime_data.pairing.register(_registration(code))
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"refresh": True}
-    )
-    assert result["step_id"] == "confirm"
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"confirm": True}
-    )
+    with (
+        patch(
+            "custom_components.coolajz_epaper_display_hub.config_flow._internal_hub_url",
+            return_value=(
+                "https://homeassistant.example.cz",
+                TRANSPORT_HTTPS_VERIFIED,
+            ),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_device_info",
+            AsyncMock(return_value=IDENTITY),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_pair",
+            AsyncMock(),
+        ) as pair_request,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_FRIENDLY_NAME: "Test display",
+                CONF_DEVICE_IP: "192.168.1.42",
+                CONF_PAIRING_PIN: "12345678",
+            },
+        )
+        assert result["step_id"] == "confirm"
+        assert result["description_placeholders"]["hub_url"] == (
+            "https://homeassistant.example.cz"
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {"confirm": True, CONF_ALLOW_INSECURE_TLS: False},
+        )
+        pair_request.assert_awaited_once()
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     assert len(entry.subentries) == 1
     assert "AA:BB:CC:DD:EE:FF" in entry.runtime_data.store.devices
+    subentry = next(iter(entry.subentries.values()))
+    assert subentry.data[CONF_TRANSPORT_SECURITY] == TRANSPORT_HTTPS_VERIFIED
+    assert CONF_PAIRING_PIN not in subentry.data
 
     record = entry.runtime_data.store.devices["AA:BB:CC:DD:EE:FF"]
     response = await entry.runtime_data.coordinator.async_process_checkin(
@@ -107,6 +134,151 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert await hass.config_entries.async_setup(entry.entry_id)
+
+
+async def test_https_insecure_requires_separate_confirmation(
+    hass: HomeAssistant,
+) -> None:
+    """Unverified TLS is explicit, warned, and stored without a diagnostic error."""
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    with (
+        patch(
+            "custom_components.coolajz_epaper_display_hub.config_flow._internal_hub_url",
+            return_value=(
+                "https://homeassistant.example.cz",
+                TRANSPORT_HTTPS_VERIFIED,
+            ),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_device_info",
+            AsyncMock(return_value=IDENTITY),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_pair",
+            AsyncMock(),
+        ) as pair_request,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_FRIENDLY_NAME: "Test display",
+                CONF_DEVICE_IP: "192.168.1.42",
+                CONF_PAIRING_PIN: "12345678",
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {"confirm": True, CONF_ALLOW_INSECURE_TLS: True},
+        )
+        assert result["step_id"] == "insecure_warning"
+        pair_request.assert_not_awaited()
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"confirm": True}
+        )
+        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+        assert (
+            result["result"].data[CONF_TRANSPORT_SECURITY] == TRANSPORT_HTTPS_INSECURE
+        )
+        assert pair_request.await_args.kwargs["transport_security"] == (
+            TRANSPORT_HTTPS_INSECURE
+        )
+
+
+async def test_duplicate_mac_preserves_existing_record(hass: HomeAssistant) -> None:
+    """A duplicate aborts before POST and does not replace the existing key."""
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    existing_secret = generate_secret()
+    entry.runtime_data.store.devices[IDENTITY.device_id] = DeviceRecord(
+        IDENTITY.device_id, existing_secret
+    )
+    with (
+        patch(
+            "custom_components.coolajz_epaper_display_hub.config_flow._internal_hub_url",
+            return_value=("http://homeassistant.local:8123", "http"),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_device_info",
+            AsyncMock(return_value=IDENTITY),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_pair",
+            AsyncMock(),
+        ) as pair_request,
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_FRIENDLY_NAME: "Duplicate",
+                CONF_DEVICE_IP: "192.168.1.42",
+                CONF_PAIRING_PIN: "12345678",
+            },
+        )
+        assert result["type"] is data_entry_flow.FlowResultType.ABORT
+        assert result["reason"] == "already_configured"
+        pair_request.assert_not_awaited()
+    assert (
+        entry.runtime_data.store.devices[IDENTITY.device_id].secret == existing_secret
+    )
+
+
+async def test_pairing_retry_reuses_credentials(hass: HomeAssistant) -> None:
+    """Retry within one flow reuses the generated key and transaction ID."""
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    pair_request = AsyncMock(side_effect=[ProtocolError("timeout", "timed out"), None])
+    with (
+        patch(
+            "custom_components.coolajz_epaper_display_hub.config_flow._internal_hub_url",
+            return_value=("http://homeassistant.local:8123", "http"),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_device_info",
+            AsyncMock(return_value=IDENTITY),
+        ),
+        patch(
+            "custom_components.coolajz_epaper_display_hub.pairing.DevicePairingClient.async_pair",
+            pair_request,
+        ),
+    ):
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_FRIENDLY_NAME: "Retry display",
+                CONF_DEVICE_IP: "192.168.1.42",
+                CONF_PAIRING_PIN: "12345678",
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"confirm": True}
+        )
+        assert result["errors"] == {"base": "timeout"}
+        assert IDENTITY.device_id not in entry.runtime_data.store.devices
+        assert not entry.subentries
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"confirm": True}
+        )
+        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    first = pair_request.await_args_list[0].kwargs
+    second = pair_request.await_args_list[1].kwargs
+    assert first["device_key"] == second["device_key"]
+    assert first["transaction_id"] == second["transaction_id"]
 
 
 async def test_time_sync_security_and_rate_limit(

@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .coordinator import HubCoordinator
-    from .pairing import PairingManager
     from .security import DeviceRateLimiter
     from .store import HubStore
 
@@ -36,7 +35,6 @@ class HubRuntime:
 
     entry: HubConfigEntry
     store: HubStore
-    pairing: PairingManager
     coordinator: HubCoordinator
     time_sync_limiter: DeviceRateLimiter
 
@@ -54,7 +52,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     from homeassistant.helpers.event import async_track_time_interval
 
     from .coordinator import HubCoordinator
-    from .pairing import PairingManager
     from .security import DeviceRateLimiter
     from .store import HubStore
     from .webhook import async_register_views
@@ -82,7 +79,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     runtime = HubRuntime(
         entry,
         store,
-        PairingManager(store),
         coordinator,
         DeviceRateLimiter(TIME_SYNC_RATE_LIMIT, TIME_SYNC_RATE_WINDOW),
     )

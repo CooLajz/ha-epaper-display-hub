@@ -17,8 +17,6 @@ from .const import (
     DEVICE_HEADER,
     DOMAIN,
     NONCE_HEADER,
-    PAIR_CLAIM_PATH,
-    PAIR_REGISTER_PATH,
     PROTOCOL_HEADER,
     PROTOCOL_VERSION,
     SIGNATURE_HEADER,
@@ -58,49 +56,6 @@ async def _read_json(request: web.Request) -> tuple[bytes, dict[str, Any]]:
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_json", "Body must be a JSON object")
     return body, payload
-
-
-class PairRegisterView(HomeAssistantView):
-    """Receive a pairing candidate using a short-lived user code."""
-
-    url = PAIR_REGISTER_PATH
-    name = f"api:{DOMAIN}:pair_register"
-    requires_auth = False
-
-    async def post(self, request: web.Request) -> web.Response:
-        hass: HomeAssistant = request.app["hass"]
-        runtime = next(iter(hass.data.get(DOMAIN, {}).values()), None)
-        if runtime is None:
-            return _json_response({"error": "hub_not_ready"}, 503)
-        if not runtime.pairing.allow_attempt(request.remote or "unknown"):
-            return _json_response({"error": "rate_limited"}, 429)
-        try:
-            _, payload = await _read_json(request)
-            return _json_response(runtime.pairing.register(payload), 202)
-        except ProtocolError as err:
-            return _json_response({"error": err.code, "message": str(err)}, 400)
-
-
-class PairClaimView(HomeAssistantView):
-    """Deliver a per-device secret once after explicit HA confirmation."""
-
-    url = PAIR_CLAIM_PATH
-    name = f"api:{DOMAIN}:pair_claim"
-    requires_auth = False
-
-    async def post(self, request: web.Request) -> web.Response:
-        hass: HomeAssistant = request.app["hass"]
-        runtime = next(iter(hass.data.get(DOMAIN, {}).values()), None)
-        if runtime is None:
-            return _json_response({"error": "hub_not_ready"}, 503)
-        try:
-            _, payload = await _read_json(request)
-            response = runtime.pairing.claim(payload)
-            return _json_response(
-                response, 200 if response["status"] == "paired" else 202
-            )
-        except ProtocolError as err:
-            return _json_response({"error": err.code, "message": str(err)}, 400)
 
 
 class CheckinView(HomeAssistantView):
@@ -254,7 +209,5 @@ class TimeSyncView(HomeAssistantView):
 
 def async_register_views(hass: HomeAssistant) -> None:
     """Register the protocol surface once per Home Assistant process."""
-    hass.http.register_view(PairRegisterView)
-    hass.http.register_view(PairClaimView)
     hass.http.register_view(CheckinView)
     hass.http.register_view(TimeSyncView)

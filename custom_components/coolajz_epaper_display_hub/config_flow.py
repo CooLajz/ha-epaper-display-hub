@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any, override
+from urllib.parse import urlsplit
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -14,6 +15,8 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import network
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -27,13 +30,18 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_ALLOW_INSECURE_TLS,
     CONF_CONTENT,
     CONF_DEVICE_ID,
+    CONF_DEVICE_IP,
     CONF_FIRMWARE_VERSION,
     CONF_FRIENDLY_NAME,
     CONF_HARDWARE_VARIANT,
+    CONF_HUB_URL,
     CONF_MODEL,
+    CONF_PAIRING_PIN,
     CONF_PROTOCOL_VERSION,
+    CONF_TRANSPORT_SECURITY,
     DEFAULT_DESIRED,
     DEFAULT_WAKE_SCHEDULE,
     DESIRED_AUTO_OTA,
@@ -41,16 +49,29 @@ from .const import (
     DESIRED_SHOW_BATTERY_VOLTAGE,
     DESIRED_WEB_ENABLED,
     DOMAIN,
+    PROTOCOL_VERSION,
     SLOT_BOTTOM_LEFT,
     SLOT_BOTTOM_RIGHT,
     SLOT_EXTRA_HUMIDITY,
     SLOT_MAIN,
     SLOT_WEATHER,
     SUBENTRY_TYPE_DISPLAY,
+    TRANSPORT_HTTP,
+    TRANSPORT_HTTPS_INSECURE,
+    TRANSPORT_HTTPS_VERIFIED,
     WAKE_INTERVAL_OPTIONS,
     WAKE_SCHEDULE_FIELD_PREFIX,
 )
-from .models import ProtocolError
+from .models import DeviceRecord, ProtocolError
+from .pairing import (
+    DeviceIdentity,
+    DevicePairingClient,
+    new_pairing_credentials,
+    normalize_hub_url,
+    validate_friendly_name,
+    validate_local_ipv4,
+    validate_pairing_pin,
+)
 
 VALUE_TYPES = [
     "auto",
@@ -61,6 +82,30 @@ VALUE_TYPES = [
     "pressure",
     "number",
 ]
+
+
+def _internal_hub_url(hass: Any) -> tuple[str, str]:
+    """Return the configured internal HA URL and its derived transport mode."""
+    try:
+        raw_url = network.get_url(
+            hass,
+            allow_external=False,
+            allow_cloud=False,
+        )
+    except network.NoURLAvailableError as err:
+        raise ProtocolError(
+            "hub_url_unavailable", "Home Assistant has no internal URL configured"
+        ) from err
+    scheme = urlsplit(raw_url).scheme.lower()
+    if scheme == "http":
+        transport_security = TRANSPORT_HTTP
+    elif scheme == "https":
+        transport_security = TRANSPORT_HTTPS_VERIFIED
+    else:
+        raise ProtocolError(
+            "hub_url_invalid", "Home Assistant internal URL must use HTTP or HTTPS"
+        )
+    return normalize_hub_url(raw_url, transport_security), transport_security
 
 
 def _value_slot_schema(prefix: str) -> dict[Any, Any]:
@@ -195,92 +240,197 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
     """Pair, confirm, and reconfigure one physical display."""
 
     def __init__(self) -> None:
-        self._pairing_session: str | None = None
-        self._pairing_code: str | None = None
+        self._identity: DeviceIdentity | None = None
+        self._device_ip: str | None = None
+        self._pairing_pin: str | None = None
+        self._friendly_name: str | None = None
+        self._hub_url: str | None = None
+        self._transport_security: str | None = None
+        self._device_key: str | None = None
+        self._transaction_id: str | None = None
 
     @property
     def _runtime(self) -> Any:
         return self._get_entry().runtime_data
 
+    @property
+    def _pairing_client(self) -> DevicePairingClient:
+        return DevicePairingClient(async_get_clientsession(self.hass))
+
+    def _is_duplicate(self, device_id: str) -> bool:
+        entry = self._get_entry()
+        return device_id in self._runtime.store.devices or any(
+            subentry.unique_id == device_id for subentry in entry.subentries.values()
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._pairing_session, self._pairing_code = self._runtime.pairing.create(
-                str(user_input[CONF_FRIENDLY_NAME])
-            )
-            return await self.async_step_pair()
+            try:
+                friendly_name = validate_friendly_name(
+                    str(user_input[CONF_FRIENDLY_NAME])
+                )
+                device_ip = validate_local_ipv4(str(user_input[CONF_DEVICE_IP]))
+                pairing_pin = validate_pairing_pin(str(user_input[CONF_PAIRING_PIN]))
+                hub_url, transport_security = _internal_hub_url(self.hass)
+                identity = await self._pairing_client.async_device_info(device_ip)
+                if self._is_duplicate(identity.device_id):
+                    return self.async_abort(reason="already_configured")
+            except ProtocolError as err:
+                errors["base"] = err.code
+            else:
+                self._friendly_name = friendly_name
+                self._device_ip = device_ip
+                self._pairing_pin = pairing_pin
+                self._hub_url = hub_url
+                self._transport_security = transport_security
+                self._identity = identity
+                return await self.async_step_confirm()
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
+                vol.Required(CONF_DEVICE_IP): TextSelector(),
+                vol.Required(CONF_PAIRING_PIN): TextSelector(),
+            }
+        )
+        if user_input is not None:
+            schema = self.add_suggested_values_to_schema(schema, user_input)
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_FRIENDLY_NAME): TextSelector()}),
-        )
-
-    async def async_step_pair(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        if self._pairing_session is None or self._pairing_code is None:
-            return self.async_abort(reason="pairing_expired")
-        candidate = self._runtime.pairing.candidate(self._pairing_session)
-        if user_input is not None and candidate is not None:
-            return await self.async_step_confirm()
-        errors = {"base": "device_not_registered"} if user_input is not None else {}
-        return self.async_show_form(
-            step_id="pair",
-            data_schema=vol.Schema(
-                {vol.Required("refresh", default=True): BooleanSelector()}
-            ),
+            data_schema=schema,
             errors=errors,
-            description_placeholders={
-                "pairing_code": self._pairing_code,
-                "register_path": "/api/coolajz_epaper_display_hub/v1/pair/register",
-            },
         )
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        if self._pairing_session is None:
+        if not self._pairing_state_complete:
             return self.async_abort(reason="pairing_expired")
-        candidate = self._runtime.pairing.candidate(self._pairing_session)
-        if candidate is None:
-            return self.async_abort(reason="pairing_expired")
+        errors: dict[str, str] = {}
         if user_input is not None:
-            entry = self._get_entry()
-            if any(
-                subentry.unique_id == candidate[CONF_DEVICE_ID]
-                for subentry in entry.subentries.values()
-            ):
-                self._runtime.pairing.cancel(self._pairing_session)
-                return self.async_abort(reason="already_configured")
-            try:
-                candidate = await self._runtime.pairing.async_confirm(
-                    self._pairing_session
-                )
-            except ProtocolError as err:
-                return self.async_abort(reason=err.code)
-            data = {
-                CONF_DEVICE_ID: candidate[CONF_DEVICE_ID],
-                CONF_MODEL: candidate[CONF_MODEL],
-                CONF_HARDWARE_VARIANT: candidate[CONF_HARDWARE_VARIANT],
-                CONF_FIRMWARE_VERSION: candidate[CONF_FIRMWARE_VERSION],
-                CONF_PROTOCOL_VERSION: candidate[CONF_PROTOCOL_VERSION],
-                CONF_CONTENT: {},
-            }
-            return self.async_create_entry(
-                title=candidate[CONF_FRIENDLY_NAME],
-                data=data,
-                unique_id=candidate[CONF_DEVICE_ID],
+            if not bool(user_input.get("confirm")):
+                errors["base"] = "confirmation_required"
+            elif bool(user_input.get(CONF_ALLOW_INSECURE_TLS)):
+                self._transport_security = TRANSPORT_HTTPS_INSECURE
+                return await self.async_step_insecure_warning()
+            else:
+                return await self._async_complete_pairing("confirm")
+        return self._show_confirmation(errors)
+
+    async def async_step_insecure_warning(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Require a separate explicit confirmation for unverified TLS."""
+        if not self._pairing_state_complete:
+            return self.async_abort(reason="pairing_expired")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if bool(user_input.get("confirm")):
+                return await self._async_complete_pairing("insecure_warning")
+            errors["base"] = "confirmation_required"
+        return self._show_insecure_warning(errors)
+
+    def _show_confirmation(self, errors: dict[str, str]) -> SubentryFlowResult:
+        schema_fields: dict[Any, Any] = {
+            vol.Required("confirm", default=True): BooleanSelector()
+        }
+        if self._transport_security == TRANSPORT_HTTPS_VERIFIED:
+            schema_fields[vol.Optional(CONF_ALLOW_INSECURE_TLS, default=False)] = (
+                BooleanSelector()
             )
         return self.async_show_form(
             step_id="confirm",
+            data_schema=vol.Schema(schema_fields),
+            errors=errors,
+            description_placeholders=self._confirmation_placeholders,
+        )
+
+    def _show_insecure_warning(self, errors: dict[str, str]) -> SubentryFlowResult:
+        return self.async_show_form(
+            step_id="insecure_warning",
             data_schema=vol.Schema(
-                {vol.Required("confirm", default=True): BooleanSelector()}
+                {vol.Required("confirm", default=False): BooleanSelector()}
             ),
-            description_placeholders={
-                "device_id": candidate[CONF_DEVICE_ID],
-                "model": candidate[CONF_MODEL],
-                "firmware_version": candidate[CONF_FIRMWARE_VERSION],
+            errors=errors,
+            description_placeholders=self._confirmation_placeholders,
+        )
+
+    @property
+    def _pairing_state_complete(self) -> bool:
+        return all(
+            value is not None
+            for value in (
+                self._identity,
+                self._device_ip,
+                self._pairing_pin,
+                self._friendly_name,
+                self._hub_url,
+                self._transport_security,
+            )
+        )
+
+    @property
+    def _confirmation_placeholders(self) -> dict[str, str]:
+        assert self._identity is not None
+        assert self._hub_url is not None
+        assert self._transport_security is not None
+        return {
+            "device_id": self._identity.device_id,
+            "model": self._identity.model,
+            "hardware_variant": self._identity.hardware_variant,
+            "firmware_version": self._identity.firmware_version,
+            "hub_url": self._hub_url,
+            "transport_security": self._transport_security,
+        }
+
+    async def _async_complete_pairing(self, step_id: str) -> SubentryFlowResult:
+        """Send stable credentials, verify proof, then persist the display."""
+        assert self._identity is not None
+        assert self._device_ip is not None
+        assert self._pairing_pin is not None
+        assert self._friendly_name is not None
+        assert self._hub_url is not None
+        assert self._transport_security is not None
+        if self._is_duplicate(self._identity.device_id):
+            return self.async_abort(reason="already_configured")
+        if self._device_key is None or self._transaction_id is None:
+            self._device_key, self._transaction_id = new_pairing_credentials()
+        try:
+            await self._pairing_client.async_pair(
+                device_ip=self._device_ip,
+                identity=self._identity,
+                pairing_pin=self._pairing_pin,
+                hub_url=self._hub_url,
+                transport_security=self._transport_security,
+                friendly_name=self._friendly_name,
+                device_key=self._device_key,
+                transaction_id=self._transaction_id,
+            )
+        except ProtocolError as err:
+            if step_id == "insecure_warning":
+                return self._show_insecure_warning({"base": err.code})
+            return self._show_confirmation({"base": err.code})
+        self._runtime.store.devices[self._identity.device_id] = DeviceRecord(
+            self._identity.device_id,
+            self._device_key,
+        )
+        await self._runtime.store.async_save()
+        return self.async_create_entry(
+            title=self._friendly_name,
+            data={
+                CONF_DEVICE_ID: self._identity.device_id,
+                CONF_MODEL: self._identity.model,
+                CONF_HARDWARE_VARIANT: self._identity.hardware_variant,
+                CONF_FIRMWARE_VERSION: self._identity.firmware_version,
+                CONF_PROTOCOL_VERSION: PROTOCOL_VERSION,
+                CONF_DEVICE_IP: self._device_ip,
+                CONF_HUB_URL: self._hub_url,
+                CONF_TRANSPORT_SECURITY: self._transport_security,
+                CONF_CONTENT: {},
             },
+            unique_id=self._identity.device_id,
         )
 
     async def async_step_reconfigure(

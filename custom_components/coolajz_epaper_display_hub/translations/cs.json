@@ -21,18 +21,25 @@
       "step": {
         "user": {
           "title": "Přidání displeje",
-          "description": "Zvolte název displeje. Následně se vytvoří dočasný párovací kód.",
-          "data": {"friendly_name": "Název displeje"}
-        },
-        "pair": {
-          "title": "Párování displeje",
-          "description": "Ve webovém rozhraní displeje zadejte místní URL Home Assistanta a párovací kód **{pairing_code}**. Registrační endpoint: `{register_path}`. Potom pokračujte kontrolou registrace.",
-          "data": {"refresh": "Zkontrolovat registraci"}
+          "description": "Nejprve nastavte Wi-Fi pomocí Improv Serial. Dokud displej zobrazuje IP adresu a osmimístný PIN, zadejte obě hodnoty zde. Párování probíhá v důvěryhodné místní síti a nepovoluje přesměrování.",
+          "data": {
+            "friendly_name": "Název displeje",
+            "device_ip": "Místní IPv4 adresa displeje",
+            "pairing_pin": "Osmimístný PIN"
+          }
         },
         "confirm": {
           "title": "Potvrzení displeje",
-          "description": "Potvrďte párování zařízení **{device_id}**, model **{model}**, firmware **{firmware_version}**. Samostatný klíč zařízení bude vydán až po tomto potvrzení.",
-          "data": {"confirm": "Potvrdit tento displej"}
+          "description": "Potvrďte zařízení **{device_id}**, model **{model}**, hardware **{hardware_variant}**, firmware **{firmware_version}**. Displej bude používat URL Home Assistanta **{hub_url}** s režimem přenosu **{transport_security}**.",
+          "data": {
+            "confirm": "Potvrdit tento displej",
+            "allow_insecure_tls": "Použít HTTPS bez ověření certifikátu"
+          }
+        },
+        "insecure_warning": {
+          "title": "Potvrzení neověřeného HTTPS",
+          "description": "Spojení bude šifrované, ale displej nebude moci ověřit identitu serveru Home Assistant.",
+          "data": {"confirm": "Rozumím a chci pokračovat"}
         },
         "reconfigure": {
           "title": "Nastavení displeje",
@@ -88,12 +95,34 @@
         }
       },
       "error": {
-        "device_not_registered": "S tímto kódem se zatím žádný displej nezaregistroval."
+        "confirmation_required": "Pro pokračování je nutné potvrzení.",
+        "device_unavailable": "Displej není na této místní adrese dostupný.",
+        "empty_metadata": "Displej vrátil neúplné identifikační údaje.",
+        "hub_url_invalid": "Nastavená interní URL Home Assistanta není platná.",
+        "hub_url_unavailable": "Před párováním nastavte interní URL Home Assistanta.",
+        "invalid_device_key": "Integrace vytvořila klíč v neplatném formátu.",
+        "invalid_device_id": "Displej vrátil neplatnou MAC adresu.",
+        "invalid_ip": "Zadejte konkrétní místní IPv4 adresu.",
+        "invalid_json": "Displej vrátil neplatná JSON data.",
+        "invalid_name": "Název displeje musí obsahovat 1 až 63 znaků.",
+        "invalid_pin": "PIN musí mít osm číslic a odpovídat hodnotě na displeji.",
+        "invalid_proof": "Párovací podpis displeje se nepodařilo ověřit.",
+        "invalid_transaction": "Integrace vytvořila neplatný identifikátor párovací transakce.",
+        "invalid_transport": "Zvolený režim zabezpečení přenosu není podporovaný.",
+        "not_pairing": "Displej není v párovacím režimu.",
+        "pairing_failed": "Displej párování nedokončil.",
+        "payload_too_large": "Párovací konfigurace je příliš velká.",
+        "rate_limited": "Proběhlo příliš mnoho pokusů o párování. Počkejte a zkuste to znovu.",
+        "redirect_rejected": "Displej se pokusil požadavek přesměrovat.",
+        "response_too_large": "Odpověď displeje je příliš velká.",
+        "timeout": "Displej neodpověděl včas.",
+        "transaction_mismatch": "Displej odpověděl pro jinou párovací transakci.",
+        "device_mismatch": "Párovací odpověď přišla z jiného displeje.",
+        "unsupported_protocol": "Displej používá nepodporovanou verzi protokolu."
       },
       "abort": {
         "already_configured": "Tato MAC adresa je již nastavená.",
-        "device_not_registered": "Před potvrzením se nezaregistroval žádný displej.",
-        "pairing_expired": "Platnost párování skončila. Zahajte je znovu.",
+        "pairing_expired": "Párovací průvodce ztratil stav. Zahajte jej znovu.",
         "unknown_device": "Chybí záznam klíče tohoto displeje.",
         "reconfigure_successful": "Nastavení displeje bylo aktualizováno."
       }

@@ -1,155 +1,281 @@
-"""User-confirmed local pairing transactions."""
+"""Home Assistant initiated pairing with a temporarily listening display."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
-import time
+import ipaddress
+import json
+import re
 from collections.abc import Mapping
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
-from .const import CLAIM_TTL, PAIRING_CODE_LENGTH, PAIRING_TTL, PROTOCOL_VERSION
-from .models import DeviceRecord, PairingSession, ProtocolError, format_device_id
-from .security import generate_nonce, generate_secret
+from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 
-if TYPE_CHECKING:
-    from .store import HubStore
+from .const import (
+    PROTOCOL_VERSION,
+    TRANSPORT_HTTP,
+    TRANSPORT_SECURITY_OPTIONS,
+)
+from .models import ProtocolError, format_device_id
+from .security import canonical_json, generate_nonce, generate_secret
+
+DEVICE_INFO_PATH = "/api/coolajz_epaper_display_hub/v1/device-info"
+DEVICE_PAIR_PATH = "/api/coolajz_epaper_display_hub/v1/pair"
+MAX_DEVICE_RESPONSE_SIZE = 8 * 1024
+MAX_PAIRING_REQUEST_SIZE = 1024
+PAIRING_TIMEOUT = ClientTimeout(
+    total=6,
+    connect=3,
+    sock_connect=3,
+    sock_read=3,
+)
+PIN_RE = re.compile(r"^[0-9]{8}$")
+TRANSACTION_RE = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
+PROOF_RE = re.compile(r"^[0-9a-f]{64}$")
+LOCAL_IPV4_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
 
 
-class PairingManager:
-    """Manage short-lived codes; raw codes are never persisted or logged."""
+@dataclass(frozen=True, slots=True)
+class DeviceIdentity:
+    """Validated public identity read before key delivery."""
 
-    def __init__(self, store: HubStore) -> None:
-        self._store = store
-        self._sessions: dict[str, PairingSession] = {}
-        self._attempts: dict[str, list[float]] = {}
+    device_id: str
+    model: str
+    hardware_variant: str
+    firmware_version: str
 
-    def allow_attempt(self, client: str) -> bool:
-        """Apply a small per-client limit to online pairing-code guesses."""
-        now = time.monotonic()
-        recent = [item for item in self._attempts.get(client, []) if item > now - 60]
-        if len(recent) >= 10:
-            self._attempts[client] = recent
-            return False
-        recent.append(now)
-        self._attempts[client] = recent
-        return True
 
-    def _digest(self, value: str) -> str:
-        return hmac.new(
-            bytes.fromhex(self._store.pairing_salt),
-            value.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+def validate_local_ipv4(value: str) -> str:
+    """Accept only an explicit non-routable IPv4 address."""
+    try:
+        address = ipaddress.ip_address(value.strip())
+    except ValueError as err:
+        raise ProtocolError("invalid_ip", "A valid IPv4 address is required") from err
+    if not isinstance(address, ipaddress.IPv4Address):
+        raise ProtocolError("invalid_ip", "Only IPv4 addresses are supported")
+    if not any(address in network for network in LOCAL_IPV4_NETWORKS):
+        raise ProtocolError("invalid_ip", "The IPv4 address must be local")
+    return str(address)
 
-    def create(self, friendly_name: str) -> tuple[str, str]:
-        """Create a UI flow-owned pairing session and return id plus raw code."""
-        session_id = generate_nonce()
-        code = "".join(secrets.choice("0123456789") for _ in range(PAIRING_CODE_LENGTH))
-        self._sessions[session_id] = PairingSession(
-            code_digest=self._digest(code),
-            expires_at=datetime.now(UTC) + PAIRING_TTL,
-            friendly_name=friendly_name.strip(),
-        )
-        return session_id, code
 
-    def _active_by_code(self, code: str) -> tuple[str, PairingSession]:
-        digest = self._digest(code)
-        now = datetime.now(UTC)
-        for session_id, session in tuple(self._sessions.items()):
-            if session.expires_at < now:
-                self._sessions.pop(session_id, None)
-                continue
-            if hmac.compare_digest(session.code_digest, digest):
-                return session_id, session
+def validate_pairing_pin(value: str) -> str:
+    """Validate the physical-access PIN displayed by the device."""
+    pin = value.strip()
+    if not PIN_RE.fullmatch(pin):
+        raise ProtocolError("invalid_pin", "Pairing PIN must contain eight digits")
+    return pin
+
+
+def validate_friendly_name(value: str) -> str:
+    """Validate the bounded name stored on the display."""
+    name = value.strip()
+    if not 1 <= len(name) <= 63:
+        raise ProtocolError("invalid_name", "Friendly name must be 1 to 63 characters")
+    return name
+
+
+def normalize_hub_url(value: str, transport_security: str) -> str:
+    """Normalize a callback URL without silently changing its transport."""
+    normalized = value.strip().rstrip("/")
+    if len(normalized) >= 192 or any(character in normalized for character in "@#?"):
+        raise ProtocolError("hub_url_invalid", "Home Assistant URL is not supported")
+    parsed = urlsplit(normalized)
+    if transport_security not in TRANSPORT_SECURITY_OPTIONS:
+        raise ProtocolError("invalid_transport", "Transport security is unsupported")
+    expected_scheme = "http" if transport_security == TRANSPORT_HTTP else "https"
+    if (
+        parsed.scheme != expected_scheme
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
         raise ProtocolError(
-            "invalid_pairing_code", "Pairing code is invalid or expired"
+            "hub_url_invalid", "Home Assistant URL does not match the transport"
         )
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
-    def register(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Accept device metadata but wait for explicit user confirmation."""
-        if int(payload.get("protocol_version", 0)) != PROTOCOL_VERSION:
-            raise ProtocolError("unsupported_protocol", "Unsupported protocol version")
-        code = str(payload.get("pairing_code", ""))
-        session_id, session = self._active_by_code(code)
-        device_id = format_device_id(str(payload.get("device_id", "")))
-        if device_id in self._store.devices:
-            raise ProtocolError("already_paired", "This device is already paired")
-        for key in ("model", "hardware_variant", "firmware_version"):
-            if not isinstance(payload.get(key), str) or not payload[key].strip():
-                raise ProtocolError("invalid_payload", f"Missing {key}")
-        claim_token = generate_nonce()
-        session.candidate = {
-            "device_id": device_id,
-            "model": payload["model"].strip(),
-            "hardware_variant": payload["hardware_variant"].strip(),
-            "firmware_version": payload["firmware_version"].strip(),
-            "protocol_version": PROTOCOL_VERSION,
-            "friendly_name": str(
-                payload.get("friendly_name") or session.friendly_name
-            ).strip(),
-        }
-        session.claim_token_digest = self._digest(claim_token)
-        session.claim_expires_at = datetime.now(UTC) + CLAIM_TTL
-        return {
-            "status": "pending_confirmation",
-            "pairing_session": session_id,
-            "claim_token": claim_token,
-            "retry_after_seconds": 5,
-        }
 
-    def candidate(self, session_id: str) -> dict[str, Any] | None:
-        """Return public candidate metadata to the owning HA flow."""
-        session = self._sessions.get(session_id)
-        if session is None or session.expires_at < datetime.now(UTC):
-            return None
-        return dict(session.candidate) if session.candidate else None
+def canonical_pairing_ack(device_id: str, transaction_id: str, hub_url: str) -> bytes:
+    """Build the firmware-facing acknowledgement proof context."""
+    return (
+        f"EPD-HUB-PAIRING-ACK-V1\n{PROTOCOL_VERSION}\n{device_id}\n"
+        f"{transaction_id}\n{hub_url}"
+    ).encode()
 
-    async def async_confirm(self, session_id: str) -> dict[str, Any]:
-        """Create durable key material after user confirmation."""
-        session = self._sessions.get(session_id)
-        if session is None or session.expires_at < datetime.now(UTC):
-            raise ProtocolError("pairing_expired", "Pairing session expired")
-        if session.candidate is None:
-            raise ProtocolError("device_not_registered", "No device has registered yet")
-        device_id = session.candidate["device_id"]
-        if device_id in self._store.devices:
-            raise ProtocolError("already_paired", "This device is already paired")
-        session.secret = generate_secret()
-        session.confirmed = True
-        self._store.devices[device_id] = DeviceRecord(
-            device_id=device_id, secret=session.secret
+
+def pairing_proof(
+    device_key: str, device_id: str, transaction_id: str, hub_url: str
+) -> str:
+    """Calculate the HMAC proof expected from a paired display."""
+    return hmac.new(
+        bytes.fromhex(device_key),
+        canonical_pairing_ack(device_id, transaction_id, hub_url),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+async def _read_limited_json(response: ClientResponse) -> dict[str, Any]:
+    """Read one bounded JSON object without trusting Content-Length."""
+    body = bytearray()
+    while chunk := await response.content.read(
+        min(4096, MAX_DEVICE_RESPONSE_SIZE + 1 - len(body))
+    ):
+        body.extend(chunk)
+        if len(body) > MAX_DEVICE_RESPONSE_SIZE:
+            raise ProtocolError("response_too_large", "Device response is too large")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise ProtocolError("invalid_json", "Device returned invalid JSON") from err
+    if not isinstance(payload, dict):
+        raise ProtocolError("invalid_json", "Device response must be an object")
+    return payload
+
+
+def _validate_identity(payload: Mapping[str, Any]) -> DeviceIdentity:
+    if payload.get("status") != "pairing":
+        raise ProtocolError("not_pairing", "Device is not in pairing mode")
+    if (
+        type(payload.get("protocol_version")) is not int
+        or payload["protocol_version"] != PROTOCOL_VERSION
+    ):
+        raise ProtocolError("unsupported_protocol", "Unsupported protocol version")
+    device_id = format_device_id(str(payload.get("device_id", "")))
+    metadata: dict[str, str] = {}
+    for key in ("model", "hardware_variant", "firmware_version"):
+        value = payload.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ProtocolError("empty_metadata", f"Device returned empty {key}")
+        metadata[key] = value.strip()
+    return DeviceIdentity(device_id=device_id, **metadata)
+
+
+class DevicePairingClient:
+    """Perform bounded, redirect-free pairing requests to one local display."""
+
+    def __init__(self, session: ClientSession) -> None:
+        self._session = session
+
+    async def async_device_info(self, device_ip: str) -> DeviceIdentity:
+        """Fetch and validate identity before generating any key material."""
+        ip = validate_local_ipv4(device_ip)
+        url = f"http://{ip}{DEVICE_INFO_PATH}"
+        try:
+            async with self._session.get(
+                url,
+                allow_redirects=False,
+                timeout=PAIRING_TIMEOUT,
+            ) as response:
+                if 300 <= response.status < 400:
+                    raise ProtocolError(
+                        "redirect_rejected", "Redirects are not allowed"
+                    )
+                if response.status != 200:
+                    raise ProtocolError(
+                        "device_unavailable", "Device identity request failed"
+                    )
+                return _validate_identity(await _read_limited_json(response))
+        except TimeoutError as err:
+            raise ProtocolError("timeout", "Device identity request timed out") from err
+        except ClientError as err:
+            raise ProtocolError("device_unavailable", "Device is unavailable") from err
+
+    async def async_pair(
+        self,
+        *,
+        device_ip: str,
+        identity: DeviceIdentity,
+        pairing_pin: str,
+        hub_url: str,
+        transport_security: str,
+        friendly_name: str,
+        device_key: str,
+        transaction_id: str,
+    ) -> None:
+        """Deliver one stable transaction and verify the device's HMAC proof."""
+        ip = validate_local_ipv4(device_ip)
+        pin = validate_pairing_pin(pairing_pin)
+        name = validate_friendly_name(friendly_name)
+        normalized_url = normalize_hub_url(hub_url, transport_security)
+        if not re.fullmatch(r"[0-9a-f]{64}", device_key):
+            raise ProtocolError("invalid_device_key", "Device key format is invalid")
+        if not TRANSACTION_RE.fullmatch(transaction_id):
+            raise ProtocolError(
+                "invalid_transaction", "Transaction identifier format is invalid"
+            )
+        request_body = canonical_json(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "pairing_pin": pin,
+                "hub_url": normalized_url,
+                "transport_security": transport_security,
+                "friendly_name": name,
+                "device_key": device_key,
+                "transaction_id": transaction_id,
+            }
         )
-        await self._store.async_save()
-        return dict(session.candidate)
+        if len(request_body) > MAX_PAIRING_REQUEST_SIZE:
+            raise ProtocolError("payload_too_large", "Pairing request is too large")
+        url = f"http://{ip}{DEVICE_PAIR_PATH}"
+        try:
+            async with self._session.post(
+                url,
+                data=request_body,
+                headers={"Content-Type": "application/json"},
+                allow_redirects=False,
+                timeout=PAIRING_TIMEOUT,
+            ) as response:
+                if 300 <= response.status < 400:
+                    raise ProtocolError(
+                        "redirect_rejected", "Redirects are not allowed"
+                    )
+                if response.status == 429:
+                    raise ProtocolError("rate_limited", "Device rate limit reached")
+                if response.status in (401, 403):
+                    raise ProtocolError("invalid_pin", "Pairing PIN was rejected")
+                if response.status != 200:
+                    raise ProtocolError(
+                        "pairing_failed", "Device pairing request failed"
+                    )
+                payload = await _read_limited_json(response)
+        except TimeoutError as err:
+            raise ProtocolError("timeout", "Pairing request timed out") from err
+        except ClientError as err:
+            raise ProtocolError("device_unavailable", "Device is unavailable") from err
 
-    def claim(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Deliver a key exactly once to the confirmed device transaction."""
-        session_id = str(payload.get("pairing_session", ""))
-        token = str(payload.get("claim_token", ""))
-        session = self._sessions.get(session_id)
-        now = datetime.now(UTC)
+        if payload.get("status") != "paired":
+            raise ProtocolError("pairing_failed", "Device did not confirm pairing")
         if (
-            session is None
-            or session.claim_expires_at is None
-            or session.claim_expires_at < now
-            or session.claim_token_digest is None
-            or not hmac.compare_digest(session.claim_token_digest, self._digest(token))
+            type(payload.get("protocol_version")) is not int
+            or payload["protocol_version"] != PROTOCOL_VERSION
         ):
-            raise ProtocolError("invalid_claim", "Claim is invalid or expired")
-        if not session.confirmed or session.secret is None or session.candidate is None:
-            return {"status": "pending_confirmation", "retry_after_seconds": 5}
-        response = {
-            "status": "paired",
-            "protocol_version": PROTOCOL_VERSION,
-            "device_id": session.candidate["device_id"],
-            "device_key": session.secret,
-        }
-        self._sessions.pop(session_id, None)
-        return response
+            raise ProtocolError("unsupported_protocol", "Unsupported protocol version")
+        response_device_id = format_device_id(str(payload.get("device_id", "")))
+        if response_device_id != identity.device_id:
+            raise ProtocolError("device_mismatch", "Pairing response device differs")
+        if payload.get("transaction_id") != transaction_id:
+            raise ProtocolError("transaction_mismatch", "Pairing transaction differs")
+        proof = payload.get("proof")
+        if not isinstance(proof, str) or not PROOF_RE.fullmatch(proof):
+            raise ProtocolError("invalid_proof", "Pairing proof format is invalid")
+        expected = pairing_proof(
+            device_key,
+            identity.device_id,
+            transaction_id,
+            normalized_url,
+        )
+        if not hmac.compare_digest(expected, proof):
+            raise ProtocolError("invalid_proof", "Pairing proof verification failed")
 
-    def cancel(self, session_id: str) -> None:
-        """Invalidate a pairing session."""
-        self._sessions.pop(session_id, None)
+
+def new_pairing_credentials() -> tuple[str, str]:
+    """Generate one stable key and transaction for a config-flow attempt."""
+    return generate_secret(), generate_nonce()

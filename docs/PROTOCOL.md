@@ -30,44 +30,112 @@ hostname, IP address, or user-configurable MAC is not a stable identifier.
 
 ## Pairing
 
-Pairing is the only multi-request operation:
+After Improv Serial provisions Wi-Fi, an unpaired display temporarily listens on
+`http://<device-ip>:80` and shows its explicit local IPv4 address and a fresh
+eight-digit PIN. Pairing is initiated by Home Assistant:
 
-1. In Home Assistant, add a Display subentry and choose a friendly name. The hub
-   shows an eight-digit code valid for ten minutes.
-2. The display sends `POST /pair/register`:
+1. The config flow asks for a friendly name, the displayed IPv4 address, and PIN.
+   Hostnames, redirects, IPv6 addresses, and non-local addresses are rejected.
+2. Home Assistant performs
+   `GET /api/coolajz_epaper_display_hub/v1/device-info` with short connect and total
+   timeouts and an 8 KiB response limit. The display returns:
 
    ```json
    {
+     "status": "pairing",
      "protocol_version": 1,
-     "pairing_code": "12345678",
      "device_id": "AA:BB:CC:DD:EE:FF",
-     "friendly_name": "Living room",
      "model": "LaskaKit ESPink 4.2",
      "hardware_variant": "ESP32-S3",
      "firmware_version": "1.0.0"
    }
    ```
 
-3. A successful registration returns HTTP 202 with an opaque `pairing_session` and
-   `claim_token`. These values authorize only this short-lived pairing transaction.
-4. Home Assistant shows the MAC, model, and firmware. The user explicitly confirms.
-   Only then does the hub create the Config Subentry and per-device key.
-5. The display polls `POST /pair/claim` with `pairing_session` and `claim_token`.
-   Before confirmation it receives HTTP 202. After confirmation it receives the key
-   once over HTTP 200:
+3. Home Assistant validates pairing state, protocol, normalized factory MAC, and
+   non-empty model, hardware, and firmware metadata. A MAC already present in the
+   private key store or another Display subentry is rejected.
+4. The confirmation page shows that identity and Home Assistant's configured
+   internal URL. The URL is obtained by the integration; the user does not enter or
+   choose its scheme.
+5. Only after confirmation, Home Assistant generates a per-device 256-bit key and a
+   URL-safe transaction identifier, then sends
+   `POST /api/coolajz_epaper_display_hub/v1/pair` to the display:
+
+   ```json
+   {
+     "protocol_version": 1,
+     "pairing_pin": "12345678",
+     "hub_url": "https://homeassistant.example.cz",
+     "transport_security": "https_verified",
+     "friendly_name": "Living room",
+     "device_key": "64 lowercase hex characters",
+     "transaction_id": "AAAAAAAAAAAAAAAAAAAAAA"
+   }
+   ```
+
+6. The display validates the PIN and stores the transaction idempotently. It returns:
 
    ```json
    {
      "status": "paired",
      "protocol_version": 1,
      "device_id": "AA:BB:CC:DD:EE:FF",
-     "device_key": "64 lowercase hex characters"
+     "transaction_id": "AAAAAAAAAAAAAAAAAAAAAA",
+     "proof": "lowercase HMAC-SHA256 hex"
    }
    ```
 
-The claim transaction is invalidated immediately after delivery. Pairing without
-HTTPS exposes the new key to a passive local-network observer; HMAC cannot protect a
-key that has not yet been shared. Pair on an isolated/trusted network or use HTTPS.
+The proof is `hex(HMAC-SHA256(device_key_bytes, canonical_ack))`, where canonical_ack
+has no trailing LF:
+
+```text
+EPD-HUB-PAIRING-ACK-V1
+1
+AA:BB:CC:DD:EE:FF
+AAAAAAAAAAAAAAAAAAAAAA
+https://homeassistant.example.cz
+```
+
+The proof confirms receipt of the key and binds the acknowledgement to the device,
+transaction, and normalized hub URL. It does not encrypt the request or authenticate
+fields absent from the canonical acknowledgement. Home Assistant persists the key
+and creates the Config Subentry only after the proof, MAC, and transaction all match.
+If the POST response is lost or invalid, retrying in the same flow reuses exactly the
+same key and transaction identifier. Firmware must therefore return the same
+successful acknowledgement for an already committed transaction rather than
+generate or overwrite credentials.
+
+Pairing interoperability vector:
+
+```text
+key_hex = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+device_id = AA:BB:CC:DD:EE:FF
+transaction_id = CCCCCCCCCCCCCCCCCCCCCC
+hub_url = http://homeassistant.local:8123
+proof = 10509da40336ccd044ddf2450a4ca3c0142405772d1398cc49e846889ac7aa1e
+```
+
+The display pairing listener is plain HTTP and transfers the new key. It is safe only
+on a physically controlled, trusted or isolated local network; the acknowledgement
+HMAC verifies receipt of the issued key but cannot prevent passive key capture or
+protect fields outside its canonical input. The listener must rate-limit attempts per
+device and stop after pairing or a bounded pairing window.
+
+### Home Assistant callback transport
+
+`transport_security` tells firmware how to connect to `hub_url` after pairing:
+
+- `http`: derived only when Home Assistant's internal URL starts with `http://`;
+- `https_verified`: the default for an internal `https://` URL; firmware verifies
+  the certificate chain, validity, and hostname;
+- `https_insecure`: an explicit opt-in available only for an internal `https://` URL;
+  TLS encrypts traffic but firmware does not verify the server identity.
+
+The integration never changes HTTPS to HTTP and never falls back from
+`https_verified` to `https_insecure` after a validation failure. Selecting insecure
+HTTPS requires a separate warning confirmation. The chosen or derived value is stored
+with the Display Config Subentry and is not treated as a diagnostic fault when the
+user deliberately selected it.
 
 ## Authenticated check-in
 
@@ -120,8 +188,8 @@ Replay protection combines two controls:
 - The timestamp window is `max(24 h, 2 × longest scheduled interval + 10 min)`,
   capped at seven days. Up to ten minutes of future clock skew is accepted. This
   allows deep sleep without accepting indefinitely old captures.
-- Pairing registration is limited per client address to reduce online guessing of
-  the short-lived eight-digit code.
+- The temporary device pairing listener rate-limits attempts to reduce online PIN
+  guessing.
 
 The device must keep a usable UTC clock through deep sleep. After a full power loss
 with no trusted clock source it uses the authenticated time-recovery exchange below
