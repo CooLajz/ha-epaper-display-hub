@@ -18,6 +18,9 @@ from homeassistant import config_entries, data_entry_flow  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
+from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa: E402
+    DESCRIPTIONS as BINARY_SENSOR_DESCRIPTIONS,
+)
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     CONF_ALLOW_INSECURE_TLS,
     CONF_DEVICE_IP,
@@ -76,6 +79,16 @@ def test_measurements_use_semantic_display_precision() -> None:
     assert precision["rssi"] == 0
     assert precision["board_temperature"] == 1
     assert precision["board_humidity"] == 0
+
+
+def test_pending_configuration_is_not_a_problem_device_class() -> None:
+    """Waiting for a sleeping display is an expected state, not a fault."""
+    pending = next(
+        item
+        for item in BINARY_SENSOR_DESCRIPTIONS
+        if item.key == "configuration_pending"
+    )
+    assert pending.device_class is None
 
 
 def _reconfigure_input(*, show_battery_voltage: bool = True) -> dict[str, Any]:

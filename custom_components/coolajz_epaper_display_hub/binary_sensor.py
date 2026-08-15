@@ -35,7 +35,6 @@ DESCRIPTIONS = (
     EpaperBinaryDescription(
         key="configuration_pending",
         mode="pending",
-        device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     EpaperBinaryDescription(
