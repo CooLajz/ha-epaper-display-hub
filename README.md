@@ -76,8 +76,9 @@ and returns `server_time`, `next_wake_at`, and authoritative `sleep_seconds`. Th
 availability remains true until two minutes after the expected wake time.
 
 OTA is also orchestrated exclusively by the Hub. Each display exposes an
-**Automatic OTA** switch, a **Daily OTA check time** entity, and an independent
-**OTA on next wake** switch. The daily time is evaluated in Home Assistant's timezone.
+**Automatic OTA** switch and an independent **OTA on next wake** switch. When
+automatic OTA is enabled, the display configuration form also shows its daily OTA
+check time. The time is evaluated in Home Assistant's timezone.
 Both automatic and manual requests create the same durable `ota_check` command, which
 is repeated until firmware acknowledges its ID. The manual switch turns off after the
 first signed delivery; this does not remove the internally queued command. Firmware

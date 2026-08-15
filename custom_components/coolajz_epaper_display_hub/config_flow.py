@@ -31,7 +31,6 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
-    AUTO_OTA_ENABLED,
     CONF_ALLOW_INSECURE_TLS,
     CONF_CONTENT,
     CONF_DEVICE_ID,
@@ -48,7 +47,6 @@ from .const import (
     DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
     DESIRED_PARTIAL_REFRESHES,
-    DESIRED_SHOW_BATTERY_VOLTAGE,
     DOMAIN,
     OTA_CHECK_TIME,
     PROTOCOL_VERSION,
@@ -139,33 +137,41 @@ def _wake_schedule_schema() -> dict[Any, Any]:
     }
 
 
-DISPLAY_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
-        **_value_slot_schema(SLOT_MAIN),
-        **_value_slot_schema(SLOT_BOTTOM_LEFT),
-        **_value_slot_schema(SLOT_BOTTOM_RIGHT),
-        vol.Optional(SLOT_WEATHER): EntitySelector(
-            EntitySelectorConfig(domain="weather")
-        ),
-        vol.Optional(SLOT_EXTRA_HUMIDITY): EntitySelector(
-            EntitySelectorConfig(domain="sensor")
-        ),
-        vol.Required(
-            DESIRED_SHOW_BATTERY_VOLTAGE,
-            default=DEFAULT_DESIRED[DESIRED_SHOW_BATTERY_VOLTAGE],
-        ): BooleanSelector(),
-        vol.Required(AUTO_OTA_ENABLED, default=False): BooleanSelector(),
-        vol.Required(OTA_CHECK_TIME, default=DEFAULT_OTA_CHECK_TIME): TimeSelector(),
-        vol.Required(
-            DESIRED_PARTIAL_REFRESHES,
-            default=DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
-        ): NumberSelector(
-            NumberSelectorConfig(min=0, max=100, step=1, mode=NumberSelectorMode.BOX)
-        ),
-        **_wake_schedule_schema(),
-    }
-)
+def _display_schema(automatic_ota_enabled: bool) -> vol.Schema:
+    """Build the form, showing OTA time only while automatic OTA is enabled."""
+    ota_time_field = (
+        {
+            vol.Required(
+                OTA_CHECK_TIME, default=DEFAULT_OTA_CHECK_TIME
+            ): TimeSelector()
+        }
+        if automatic_ota_enabled
+        else {}
+    )
+    return vol.Schema(
+        {
+            vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
+            **_value_slot_schema(SLOT_MAIN),
+            **_value_slot_schema(SLOT_BOTTOM_LEFT),
+            **_value_slot_schema(SLOT_BOTTOM_RIGHT),
+            vol.Optional(SLOT_WEATHER): EntitySelector(
+                EntitySelectorConfig(domain="weather")
+            ),
+            vol.Optional(SLOT_EXTRA_HUMIDITY): EntitySelector(
+                EntitySelectorConfig(domain="sensor")
+            ),
+            **ota_time_field,
+            vol.Required(
+                DESIRED_PARTIAL_REFRESHES,
+                default=DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0, max=100, step=1, mode=NumberSelectorMode.BOX
+                )
+            ),
+            **_wake_schedule_schema(),
+        }
+    )
 
 
 def _content_from_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
@@ -190,13 +196,14 @@ def _suggested_values(
     subentry: Any,
     desired: Mapping[str, Any],
     wake_schedule: Mapping[str, Any],
-    automatic_ota_enabled: bool,
     ota_check_time: str,
 ) -> dict[str, Any]:
     values: dict[str, Any] = {
         CONF_FRIENDLY_NAME: subentry.title,
-        **desired,
-        AUTO_OTA_ENABLED: automatic_ota_enabled,
+        DESIRED_PARTIAL_REFRESHES: desired.get(
+            DESIRED_PARTIAL_REFRESHES,
+            DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
+        ),
         OTA_CHECK_TIME: ota_check_time,
     }
     for hour in range(24):
@@ -410,7 +417,8 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
             }
             configuration_changed = record.update_configuration(desired, wake_schedule)
             ota_settings_changed = record.update_ota_settings(
-                bool(user_input[AUTO_OTA_ENABLED]), user_input[OTA_CHECK_TIME]
+                record.automatic_ota_enabled,
+                user_input.get(OTA_CHECK_TIME, record.ota_check_time),
             )
             if configuration_changed or ota_settings_changed:
                 await self._runtime.store.async_save()
@@ -428,12 +436,11 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                DISPLAY_SCHEMA,
+                _display_schema(record.automatic_ota_enabled),
                 _suggested_values(
                     subentry,
                     record.desired,
                     record.wake_schedule,
-                    record.automatic_ota_enabled,
                     record.ota_check_time,
                 ),
             ),

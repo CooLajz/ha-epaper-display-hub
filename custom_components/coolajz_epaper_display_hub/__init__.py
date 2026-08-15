@@ -78,11 +78,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     entity_registry = er.async_get(hass)
     for device_id in configured_ids:
-        retired_entity_id = entity_registry.async_get_entity_id(
-            "switch", DOMAIN, f"{device_id}-web_enabled"
-        )
-        if retired_entity_id is not None:
-            entity_registry.async_remove(retired_entity_id)
+        for platform, key in (
+            ("switch", "web_enabled"),
+            ("time", "ota_check_time"),
+        ):
+            retired_entity_id = entity_registry.async_get_entity_id(
+                platform, DOMAIN, f"{device_id}-{key}"
+            )
+            if retired_entity_id is not None:
+                entity_registry.async_remove(retired_entity_id)
 
     coordinator = HubCoordinator(hass, store, entry)
     runtime = HubRuntime(

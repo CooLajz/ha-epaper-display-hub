@@ -11,7 +11,7 @@ PROTOCOL_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"
 STORAGE_VERSION = 1
 
-PLATFORMS = ["sensor", "binary_sensor", "switch", "time"]
+PLATFORMS = ["sensor", "binary_sensor", "switch"]
 SUBENTRY_TYPE_DISPLAY = "display"
 
 API_BASE = f"/api/{DOMAIN}/v1"
@@ -54,7 +54,6 @@ TRANSPORT_SECURITY_OPTIONS = (
 
 DESIRED_SHOW_BATTERY_VOLTAGE = "show_battery_voltage"
 DESIRED_PARTIAL_REFRESHES = "partial_refreshes_between_full"
-AUTO_OTA_ENABLED = "auto_ota"
 OTA_CHECK_TIME = "ota_check_time"
 DEFAULT_OTA_CHECK_TIME = "03:00:00"
 OTA_COMMAND_TYPE = "ota_check"

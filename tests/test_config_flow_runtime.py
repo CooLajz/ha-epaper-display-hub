@@ -21,16 +21,17 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa: E402
     DESCRIPTIONS as BINARY_SENSOR_DESCRIPTIONS,
 )
+from custom_components.coolajz_epaper_display_hub.config_flow import (  # noqa: E402
+    _display_schema,
+)
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
-    AUTO_OTA_ENABLED,
     CONF_ALLOW_INSECURE_TLS,
     CONF_DEVICE_IP,
     CONF_FRIENDLY_NAME,
     CONF_PAIRING_PIN,
     CONF_TRANSPORT_SECURITY,
-    DEFAULT_DESIRED,
-    DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
+    DESIRED_PARTIAL_REFRESHES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
     DOMAIN,
     NONCE_HEADER,
@@ -94,13 +95,23 @@ def test_pending_configuration_is_not_a_problem_device_class() -> None:
     assert pending.device_class is None
 
 
-def _reconfigure_input(*, show_battery_voltage: bool = True) -> dict[str, Any]:
+def test_device_switches_are_not_in_reconfigure_form() -> None:
+    """Only an enabled automatic OTA switch reveals the Hub-side schedule time."""
+    disabled_keys = {str(key.schema) for key in _display_schema(False).schema}
+    enabled_keys = {str(key.schema) for key in _display_schema(True).schema}
+
+    assert DESIRED_SHOW_BATTERY_VOLTAGE not in disabled_keys
+    assert "auto_ota" not in disabled_keys
+    assert OTA_CHECK_TIME not in disabled_keys
+    assert DESIRED_SHOW_BATTERY_VOLTAGE not in enabled_keys
+    assert "auto_ota" not in enabled_keys
+    assert OTA_CHECK_TIME in enabled_keys
+
+
+def _reconfigure_input(*, partial_refreshes: int = 10) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
-        **DEFAULT_DESIRED,
-        AUTO_OTA_ENABLED: False,
-        OTA_CHECK_TIME: DEFAULT_OTA_CHECK_TIME,
-        DESIRED_SHOW_BATTERY_VOLTAGE: show_battery_voltage,
+        DESIRED_PARTIAL_REFRESHES: partial_refreshes,
         **{
             f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(
                 DEFAULT_WAKE_SCHEDULE[str(hour)]
@@ -189,11 +200,12 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
         },
     )
     result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], _reconfigure_input(show_battery_voltage=False)
+        result["flow_id"], _reconfigure_input(partial_refreshes=11)
     )
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert record.desired[DESIRED_SHOW_BATTERY_VOLTAGE] is False
+    assert record.desired[DESIRED_SHOW_BATTERY_VOLTAGE] is True
+    assert record.desired[DESIRED_PARTIAL_REFRESHES] == 11
     assert record.desired_revision == original_revision + 1
 
     response = await entry.runtime_data.coordinator.async_process_checkin(

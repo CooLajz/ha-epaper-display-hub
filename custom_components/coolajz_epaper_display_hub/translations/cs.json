@@ -51,8 +51,6 @@
             "bottom_right_unit": "Vlastní jednotka pravé dolní hodnoty",
             "weather": "Entita počasí",
             "extra_humidity": "Entita doplňkové vlhkosti",
-            "show_battery_voltage": "Zobrazovat napětí baterie",
-            "auto_ota": "Automatické OTA aktualizace",
             "ota_check_time": "Čas denní OTA kontroly",
             "partial_refreshes_between_full": "Počet partial refreshů mezi full refreshi",
             "wake_interval_00": "00:00–00:59 – interval probouzení (minuty)",
@@ -152,9 +150,6 @@
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
       "auto_ota": {"name": "Automatická OTA"},
       "ota_next_wake": {"name": "OTA při příštím probuzení"}
-    },
-    "time": {
-      "ota_check_time": {"name": "Čas denní OTA kontroly"}
     }
   }
 }
