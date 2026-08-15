@@ -24,7 +24,7 @@ DEVICE_KEY = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 TRANSACTION_ID = "AAAAAAAAAAAAAAAAAAAAAA"
 HUB_URL = "https://homeassistant.example.cz"
 VECTOR_TRANSACTION_ID = "CCCCCCCCCCCCCCCCCCCCCC"
-VECTOR_HUB_URL = "http://homeassistant.local:8123"
+VECTOR_HUB_URL = "https://homeassistant.example.cz"
 
 
 class FakeContent:
@@ -100,11 +100,13 @@ def successful_pair_response(body: dict[str, Any]) -> FakeResponse:
             "protocol_version": 1,
             "device_id": DEVICE_ID,
             "transaction_id": body["transaction_id"],
+            "allow_invalid_certificate": body["allow_invalid_certificate"],
             "proof": pairing_proof(
                 body["device_key"],
                 DEVICE_ID,
                 body["transaction_id"],
                 body["hub_url"],
+                body["allow_invalid_certificate"],
             ),
         },
     )
@@ -204,13 +206,15 @@ def test_transport_never_changes_url_scheme(url: str, transport: str) -> None:
 
 
 def test_pairing_hmac_interoperability_vector() -> None:
-    assert canonical_pairing_ack(DEVICE_ID, VECTOR_TRANSACTION_ID, VECTOR_HUB_URL) == (
+    assert canonical_pairing_ack(
+        DEVICE_ID, VECTOR_TRANSACTION_ID, VECTOR_HUB_URL, True
+    ) == (
         b"EPD-HUB-PAIRING-ACK-V1\n1\nAA:BB:CC:DD:EE:FF\n"
-        b"CCCCCCCCCCCCCCCCCCCCCC\nhttp://homeassistant.local:8123"
+        b"CCCCCCCCCCCCCCCCCCCCCC\nhttps://homeassistant.example.cz\n1"
     )
     assert pairing_proof(
-        DEVICE_KEY, DEVICE_ID, VECTOR_TRANSACTION_ID, VECTOR_HUB_URL
-    ) == ("10509da40336ccd044ddf2450a4ca3c0142405772d1398cc49e846889ac7aa1e")
+        DEVICE_KEY, DEVICE_ID, VECTOR_TRANSACTION_ID, VECTOR_HUB_URL, True
+    ) == ("9780d216f8001eb7b7a2ba4a1202189d43ad70a092b240ea8df1870cd96b2ff8")
 
 
 @pytest.mark.asyncio
@@ -221,6 +225,7 @@ async def test_successful_pair_and_same_transaction_retry() -> None:
     await pair(pairing_client)
     assert session.post_bodies[0] == session.post_bodies[1]
     assert session.post_bodies[0]["transport_security"] == "https_verified"
+    assert session.post_bodies[0]["allow_invalid_certificate"] is False
     assert session.post_bodies[0]["pairing_pin"] == "12345678"
 
 
@@ -237,7 +242,21 @@ async def test_pairing_http_failures(status: int, error: str) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["proof", "transaction_id", "device_id"])
+async def test_firmware_certificate_policy_error_is_preserved() -> None:
+    session = FakeSession(
+        post_factory=lambda _body: FakeResponse(
+            400, {"error": "invalid_certificate_policy"}
+        )
+    )
+    with pytest.raises(ProtocolError) as caught:
+        await pair(client(session))
+    assert caught.value.code == "invalid_certificate_policy"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", ["proof", "transaction_id", "device_id", "allow_invalid_certificate"]
+)
 async def test_pairing_rejects_unbound_response(change: str) -> None:
     def response(body: dict[str, Any]) -> FakeResponse:
         payload = {
@@ -245,14 +264,20 @@ async def test_pairing_rejects_unbound_response(change: str) -> None:
             "protocol_version": 1,
             "device_id": DEVICE_ID,
             "transaction_id": body["transaction_id"],
+            "allow_invalid_certificate": body["allow_invalid_certificate"],
             "proof": pairing_proof(
-                body["device_key"], DEVICE_ID, body["transaction_id"], body["hub_url"]
+                body["device_key"],
+                DEVICE_ID,
+                body["transaction_id"],
+                body["hub_url"],
+                body["allow_invalid_certificate"],
             ),
         }
         payload[change] = {
             "proof": "0" * 64,
             "transaction_id": "BBBBBBBBBBBBBBBBBBBBBB",
             "device_id": "11:22:33:44:55:66",
+            "allow_invalid_certificate": True,
         }[change]
         return FakeResponse(200, payload)
 

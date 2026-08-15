@@ -237,7 +237,7 @@ class EpaperHubConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class DisplaySubentryFlow(ConfigSubentryFlow):
-    """Pair, confirm, and reconfigure one physical display."""
+    """Pair and reconfigure one physical display."""
 
     def __init__(self) -> None:
         self._identity: DeviceIdentity | None = None
@@ -267,14 +267,29 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         errors: dict[str, str] = {}
+        hub_url = ""
+        default_transport: str | None = None
+        try:
+            hub_url, default_transport = _internal_hub_url(self.hass)
+        except ProtocolError as err:
+            errors["base"] = err.code
         if user_input is not None:
             try:
+                if default_transport is None:
+                    raise ProtocolError(
+                        "hub_url_unavailable",
+                        "Home Assistant has no usable internal URL",
+                    )
                 friendly_name = validate_friendly_name(
                     str(user_input[CONF_FRIENDLY_NAME])
                 )
                 device_ip = validate_local_ipv4(str(user_input[CONF_DEVICE_IP]))
                 pairing_pin = validate_pairing_pin(str(user_input[CONF_PAIRING_PIN]))
-                hub_url, transport_security = _internal_hub_url(self.hass)
+                transport_security = default_transport
+                if default_transport == TRANSPORT_HTTPS_VERIFIED and bool(
+                    user_input.get(CONF_ALLOW_INSECURE_TLS)
+                ):
+                    transport_security = TRANSPORT_HTTPS_INSECURE
                 identity = await self._pairing_client.async_device_info(device_ip)
                 if self._is_duplicate(identity.device_id):
                     return self.async_abort(reason="already_configured")
@@ -287,105 +302,29 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 self._hub_url = hub_url
                 self._transport_security = transport_security
                 self._identity = identity
-                return await self.async_step_confirm()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
-                vol.Required(CONF_DEVICE_IP): TextSelector(),
-                vol.Required(CONF_PAIRING_PIN): TextSelector(),
-            }
-        )
+                return await self._async_complete_pairing(user_input)
+        schema_fields: dict[Any, Any] = {
+            vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
+            vol.Required(CONF_DEVICE_IP): TextSelector(),
+            vol.Required(CONF_PAIRING_PIN): TextSelector(),
+        }
+        if default_transport == TRANSPORT_HTTPS_VERIFIED:
+            schema_fields[vol.Optional(CONF_ALLOW_INSECURE_TLS, default=False)] = (
+                BooleanSelector()
+            )
+        schema = vol.Schema(schema_fields)
         if user_input is not None:
             schema = self.add_suggested_values_to_schema(schema, user_input)
         return self.async_show_form(
             step_id="user",
             data_schema=schema,
             errors=errors,
+            description_placeholders={"hub_url": hub_url or "—"},
         )
 
-    async def async_step_confirm(
-        self, user_input: dict[str, Any] | None = None
+    async def _async_complete_pairing(
+        self, user_input: dict[str, Any]
     ) -> SubentryFlowResult:
-        if not self._pairing_state_complete:
-            return self.async_abort(reason="pairing_expired")
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            if not bool(user_input.get("confirm")):
-                errors["base"] = "confirmation_required"
-            elif bool(user_input.get(CONF_ALLOW_INSECURE_TLS)):
-                self._transport_security = TRANSPORT_HTTPS_INSECURE
-                return await self.async_step_insecure_warning()
-            else:
-                return await self._async_complete_pairing("confirm")
-        return self._show_confirmation(errors)
-
-    async def async_step_insecure_warning(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Require a separate explicit confirmation for unverified TLS."""
-        if not self._pairing_state_complete:
-            return self.async_abort(reason="pairing_expired")
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            if bool(user_input.get("confirm")):
-                return await self._async_complete_pairing("insecure_warning")
-            errors["base"] = "confirmation_required"
-        return self._show_insecure_warning(errors)
-
-    def _show_confirmation(self, errors: dict[str, str]) -> SubentryFlowResult:
-        schema_fields: dict[Any, Any] = {
-            vol.Required("confirm", default=True): BooleanSelector()
-        }
-        if self._transport_security == TRANSPORT_HTTPS_VERIFIED:
-            schema_fields[vol.Optional(CONF_ALLOW_INSECURE_TLS, default=False)] = (
-                BooleanSelector()
-            )
-        return self.async_show_form(
-            step_id="confirm",
-            data_schema=vol.Schema(schema_fields),
-            errors=errors,
-            description_placeholders=self._confirmation_placeholders,
-        )
-
-    def _show_insecure_warning(self, errors: dict[str, str]) -> SubentryFlowResult:
-        return self.async_show_form(
-            step_id="insecure_warning",
-            data_schema=vol.Schema(
-                {vol.Required("confirm", default=False): BooleanSelector()}
-            ),
-            errors=errors,
-            description_placeholders=self._confirmation_placeholders,
-        )
-
-    @property
-    def _pairing_state_complete(self) -> bool:
-        return all(
-            value is not None
-            for value in (
-                self._identity,
-                self._device_ip,
-                self._pairing_pin,
-                self._friendly_name,
-                self._hub_url,
-                self._transport_security,
-            )
-        )
-
-    @property
-    def _confirmation_placeholders(self) -> dict[str, str]:
-        assert self._identity is not None
-        assert self._hub_url is not None
-        assert self._transport_security is not None
-        return {
-            "device_id": self._identity.device_id,
-            "model": self._identity.model,
-            "hardware_variant": self._identity.hardware_variant,
-            "firmware_version": self._identity.firmware_version,
-            "hub_url": self._hub_url,
-            "transport_security": self._transport_security,
-        }
-
-    async def _async_complete_pairing(self, step_id: str) -> SubentryFlowResult:
         """Send stable credentials, verify proof, then persist the display."""
         assert self._identity is not None
         assert self._device_ip is not None
@@ -409,9 +348,23 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 transaction_id=self._transaction_id,
             )
         except ProtocolError as err:
-            if step_id == "insecure_warning":
-                return self._show_insecure_warning({"base": err.code})
-            return self._show_confirmation({"base": err.code})
+            schema_fields: dict[Any, Any] = {
+                vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
+                vol.Required(CONF_DEVICE_IP): TextSelector(),
+                vol.Required(CONF_PAIRING_PIN): TextSelector(),
+            }
+            if self._hub_url.startswith("https://"):
+                schema_fields[vol.Optional(CONF_ALLOW_INSECURE_TLS, default=False)] = (
+                    BooleanSelector()
+                )
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self.add_suggested_values_to_schema(
+                    vol.Schema(schema_fields), user_input
+                ),
+                errors={"base": err.code},
+                description_placeholders={"hub_url": self._hub_url},
+            )
         self._runtime.store.devices[self._identity.device_id] = DeviceRecord(
             self._identity.device_id,
             self._device_key,

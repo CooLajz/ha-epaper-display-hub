@@ -64,7 +64,7 @@ async def test_create_main_config_entry(hass: HomeAssistant) -> None:
 
 
 async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
-    """A confirmed display becomes one subentry and removal revokes its key."""
+    """A paired display becomes one subentry and removal revokes its key."""
     entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -96,15 +96,8 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
                 CONF_FRIENDLY_NAME: "Test display",
                 CONF_DEVICE_IP: "192.168.1.42",
                 CONF_PAIRING_PIN: "12345678",
+                CONF_ALLOW_INSECURE_TLS: False,
             },
-        )
-        assert result["step_id"] == "confirm"
-        assert result["description_placeholders"]["hub_url"] == (
-            "https://homeassistant.example.cz"
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
-            {"confirm": True, CONF_ALLOW_INSECURE_TLS: False},
         )
         pair_request.assert_awaited_once()
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -136,10 +129,10 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
     assert await hass.config_entries.async_setup(entry.entry_id)
 
 
-async def test_https_insecure_requires_separate_confirmation(
+async def test_https_insecure_pairs_directly_from_first_form(
     hass: HomeAssistant,
 ) -> None:
-    """Unverified TLS is explicit, warned, and stored without a diagnostic error."""
+    """The first form explicitly selects unverified TLS and pairs immediately."""
     entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -170,16 +163,8 @@ async def test_https_insecure_requires_separate_confirmation(
                 CONF_FRIENDLY_NAME: "Test display",
                 CONF_DEVICE_IP: "192.168.1.42",
                 CONF_PAIRING_PIN: "12345678",
+                CONF_ALLOW_INSECURE_TLS: True,
             },
-        )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
-            {"confirm": True, CONF_ALLOW_INSECURE_TLS: True},
-        )
-        assert result["step_id"] == "insecure_warning"
-        pair_request.assert_not_awaited()
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {"confirm": True}
         )
         assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
         assert (
@@ -265,14 +250,16 @@ async def test_pairing_retry_reuses_credentials(hass: HomeAssistant) -> None:
                 CONF_PAIRING_PIN: "12345678",
             },
         )
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {"confirm": True}
-        )
         assert result["errors"] == {"base": "timeout"}
         assert IDENTITY.device_id not in entry.runtime_data.store.devices
         assert not entry.subentries
         result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"], {"confirm": True}
+            result["flow_id"],
+            {
+                CONF_FRIENDLY_NAME: "Retry display",
+                CONF_DEVICE_IP: "192.168.1.42",
+                CONF_PAIRING_PIN: "12345678",
+            },
         )
         assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     first = pair_request.await_args_list[0].kwargs

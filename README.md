@@ -41,15 +41,16 @@ choose **E-paper Display Hub**.
 2. Provision the display's Wi-Fi with Improv Serial. The unpaired display temporarily
    shows its local IPv4 address and an eight-digit PIN.
 3. Enter a friendly name, the displayed IPv4 address, and PIN in Home Assistant.
-4. Verify the MAC, model, hardware, firmware, and the internal Home Assistant URL,
-   then confirm.
-5. Home Assistant sends a unique key to the display and creates the subentry only
+4. If the displayed internal HA URL uses HTTPS and its certificate cannot be
+   verified by the display, enable the explicit insecure-certificate checkbox.
+5. Submit the single form. Home Assistant validates the device identity, sends a
+   unique key to the display, and creates the subentry only
    after verifying the display's HMAC proof.
 
 The integration derives transport from Home Assistant's internal URL. An `http://`
 URL uses local HTTP. An `https://` URL defaults to full certificate and hostname
-verification. HTTPS without certificate verification is available only as an
-explicit opt-in followed by a separate warning; there is no automatic downgrade.
+verification. HTTPS without certificate verification is available as an explicit
+checkbox in the same pairing form; there is no automatic downgrade.
 
 Each display is a Config Subentry and owns exactly one Device Registry device. Its
 normalized MAC is the unique ID. Displays can be renamed and reconfigured

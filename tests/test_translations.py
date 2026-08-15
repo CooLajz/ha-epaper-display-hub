@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-PAIRING_STEPS = {"user", "confirm", "insecure_warning"}
+PAIRING_STEPS = {"user"}
 PAIRING_FIELDS = {
     "friendly_name",
     "device_ip",
     "pairing_pin",
-    "confirm",
     "allow_insecure_tls",
 }
 
@@ -34,8 +33,5 @@ def test_pairing_translations_exist_in_czech_and_english() -> None:
         assert PAIRING_FIELDS <= translated_fields
         assert "invalid_proof" in display["error"]
         assert "rate_limited" in display["error"]
-        if language == "cs":
-            assert display["step"]["insecure_warning"]["description"] == (
-                "Spojení bude šifrované, ale displej nebude moci ověřit identitu "
-                "serveru Home Assistant."
-            )
+        assert "confirm" not in display["step"]
+        assert "insecure_warning" not in display["step"]

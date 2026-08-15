@@ -54,11 +54,11 @@ eight-digit PIN. Pairing is initiated by Home Assistant:
 3. Home Assistant validates pairing state, protocol, normalized factory MAC, and
    non-empty model, hardware, and firmware metadata. A MAC already present in the
    private key store or another Display subentry is rejected.
-4. The confirmation page shows that identity and Home Assistant's configured
-   internal URL. The URL is obtained by the integration; the user does not enter or
-   choose its scheme.
-5. Only after confirmation, Home Assistant generates a per-device 256-bit key and a
-   URL-safe transaction identifier, then sends
+4. The first form shows Home Assistant's configured internal URL. The URL is obtained
+   by the integration; the user does not enter or choose its scheme. For HTTPS the
+   same form offers an explicit checkbox to allow an invalid certificate.
+5. Submitting that form makes Home Assistant generate a per-device 256-bit key and a
+   URL-safe transaction identifier, then send
    `POST /api/coolajz_epaper_display_hub/v1/pair` to the display:
 
    ```json
@@ -67,6 +67,7 @@ eight-digit PIN. Pairing is initiated by Home Assistant:
      "pairing_pin": "12345678",
      "hub_url": "https://homeassistant.example.cz",
      "transport_security": "https_verified",
+     "allow_invalid_certificate": false,
      "friendly_name": "Living room",
      "device_key": "64 lowercase hex characters",
      "transaction_id": "AAAAAAAAAAAAAAAAAAAAAA"
@@ -81,6 +82,7 @@ eight-digit PIN. Pairing is initiated by Home Assistant:
      "protocol_version": 1,
      "device_id": "AA:BB:CC:DD:EE:FF",
      "transaction_id": "AAAAAAAAAAAAAAAAAAAAAA",
+     "allow_invalid_certificate": false,
      "proof": "lowercase HMAC-SHA256 hex"
    }
    ```
@@ -94,12 +96,14 @@ EPD-HUB-PAIRING-ACK-V1
 AA:BB:CC:DD:EE:FF
 AAAAAAAAAAAAAAAAAAAAAA
 https://homeassistant.example.cz
+0
 ```
 
 The proof confirms receipt of the key and binds the acknowledgement to the device,
-transaction, and normalized hub URL. It does not encrypt the request or authenticate
-fields absent from the canonical acknowledgement. Home Assistant persists the key
-and creates the Config Subentry only after the proof, MAC, and transaction all match.
+transaction, normalized hub URL, and certificate policy. It does not encrypt the
+request or authenticate fields absent from the canonical acknowledgement. Home
+Assistant persists the key and creates the Config Subentry only after the proof, MAC,
+transaction, and certificate policy all match.
 If the POST response is lost or invalid, retrying in the same flow reuses exactly the
 same key and transaction identifier. Firmware must therefore return the same
 successful acknowledgement for an already committed transaction rather than
@@ -111,8 +115,9 @@ Pairing interoperability vector:
 key_hex = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 device_id = AA:BB:CC:DD:EE:FF
 transaction_id = CCCCCCCCCCCCCCCCCCCCCC
-hub_url = http://homeassistant.local:8123
-proof = 10509da40336ccd044ddf2450a4ca3c0142405772d1398cc49e846889ac7aa1e
+hub_url = https://homeassistant.example.cz
+allow_invalid_certificate = true
+proof = 9780d216f8001eb7b7a2ba4a1202189d43ad70a092b240ea8df1870cd96b2ff8
 ```
 
 The display pairing listener is plain HTTP and transfers the new key. It is safe only
@@ -133,9 +138,10 @@ device and stop after pairing or a bounded pairing window.
 
 The integration never changes HTTPS to HTTP and never falls back from
 `https_verified` to `https_insecure` after a validation failure. Selecting insecure
-HTTPS requires a separate warning confirmation. The chosen or derived value is stored
-with the Display Config Subentry and is not treated as a diagnostic fault when the
-user deliberately selected it.
+HTTPS is selected directly in the first pairing form. The chosen or derived value is
+stored with the Display Config Subentry and is not treated as a diagnostic fault when
+the user deliberately selected it. The request also carries the equivalent boolean
+`allow_invalid_certificate` required by firmware; it is bound into the HMAC proof.
 
 ## Authenticated check-in
 

@@ -17,6 +17,7 @@ from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 from .const import (
     PROTOCOL_VERSION,
     TRANSPORT_HTTP,
+    TRANSPORT_HTTPS_INSECURE,
     TRANSPORT_SECURITY_OPTIONS,
 )
 from .models import ProtocolError, format_device_id
@@ -35,6 +36,14 @@ PAIRING_TIMEOUT = ClientTimeout(
 PIN_RE = re.compile(r"^[0-9]{8}$")
 TRANSACTION_RE = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
 PROOF_RE = re.compile(r"^[0-9a-f]{64}$")
+FIRMWARE_PAIRING_ERRORS = {
+    "invalid_pairing_pin": "invalid_pin",
+    "invalid_certificate_policy": "invalid_certificate_policy",
+    "invalid_transaction_id": "invalid_transaction",
+    "invalid_json": "invalid_json",
+    "invalid_configuration": "invalid_configuration",
+    "already_paired": "already_paired",
+}
 LOCAL_IPV4_NETWORKS = tuple(
     ipaddress.ip_network(network)
     for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -103,21 +112,35 @@ def normalize_hub_url(value: str, transport_security: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
-def canonical_pairing_ack(device_id: str, transaction_id: str, hub_url: str) -> bytes:
+def canonical_pairing_ack(
+    device_id: str,
+    transaction_id: str,
+    hub_url: str,
+    allow_invalid_certificate: bool,
+) -> bytes:
     """Build the firmware-facing acknowledgement proof context."""
     return (
         f"EPD-HUB-PAIRING-ACK-V1\n{PROTOCOL_VERSION}\n{device_id}\n"
-        f"{transaction_id}\n{hub_url}"
+        f"{transaction_id}\n{hub_url}\n{int(allow_invalid_certificate)}"
     ).encode()
 
 
 def pairing_proof(
-    device_key: str, device_id: str, transaction_id: str, hub_url: str
+    device_key: str,
+    device_id: str,
+    transaction_id: str,
+    hub_url: str,
+    allow_invalid_certificate: bool,
 ) -> str:
     """Calculate the HMAC proof expected from a paired display."""
     return hmac.new(
         bytes.fromhex(device_key),
-        canonical_pairing_ack(device_id, transaction_id, hub_url),
+        canonical_pairing_ack(
+            device_id,
+            transaction_id,
+            hub_url,
+            allow_invalid_certificate,
+        ),
         hashlib.sha256,
     ).hexdigest()
 
@@ -205,6 +228,7 @@ class DevicePairingClient:
         pin = validate_pairing_pin(pairing_pin)
         name = validate_friendly_name(friendly_name)
         normalized_url = normalize_hub_url(hub_url, transport_security)
+        allow_invalid_certificate = transport_security == TRANSPORT_HTTPS_INSECURE
         if not re.fullmatch(r"[0-9a-f]{64}", device_key):
             raise ProtocolError("invalid_device_key", "Device key format is invalid")
         if not TRANSACTION_RE.fullmatch(transaction_id):
@@ -217,6 +241,7 @@ class DevicePairingClient:
                 "pairing_pin": pin,
                 "hub_url": normalized_url,
                 "transport_security": transport_security,
+                "allow_invalid_certificate": allow_invalid_certificate,
                 "friendly_name": name,
                 "device_key": device_key,
                 "transaction_id": transaction_id,
@@ -242,8 +267,16 @@ class DevicePairingClient:
                 if response.status in (401, 403):
                     raise ProtocolError("invalid_pin", "Pairing PIN was rejected")
                 if response.status != 200:
+                    try:
+                        error_payload = await _read_limited_json(response)
+                    except ProtocolError as err:
+                        raise ProtocolError(
+                            "pairing_failed", "Device pairing request failed"
+                        ) from err
+                    firmware_error = str(error_payload.get("error", ""))
                     raise ProtocolError(
-                        "pairing_failed", "Device pairing request failed"
+                        FIRMWARE_PAIRING_ERRORS.get(firmware_error, "pairing_failed"),
+                        "Device pairing request failed",
                     )
                 payload = await _read_limited_json(response)
         except TimeoutError as err:
@@ -263,6 +296,14 @@ class DevicePairingClient:
             raise ProtocolError("device_mismatch", "Pairing response device differs")
         if payload.get("transaction_id") != transaction_id:
             raise ProtocolError("transaction_mismatch", "Pairing transaction differs")
+        if (
+            type(payload.get("allow_invalid_certificate")) is not bool
+            or payload["allow_invalid_certificate"] != allow_invalid_certificate
+        ):
+            raise ProtocolError(
+                "certificate_policy_mismatch",
+                "Pairing certificate policy differs",
+            )
         proof = payload.get("proof")
         if not isinstance(proof, str) or not PROOF_RE.fullmatch(proof):
             raise ProtocolError("invalid_proof", "Pairing proof format is invalid")
@@ -271,6 +312,7 @@ class DevicePairingClient:
             identity.device_id,
             transaction_id,
             normalized_url,
+            allow_invalid_certificate,
         )
         if not hmac.compare_digest(expected, proof):
             raise ProtocolError("invalid_proof", "Pairing proof verification failed")

@@ -21,25 +21,13 @@
       "step": {
         "user": {
           "title": "Přidání displeje",
-          "description": "Nejprve nastavte Wi-Fi pomocí Improv Serial. Dokud displej zobrazuje IP adresu a osmimístný PIN, zadejte obě hodnoty zde. Párování probíhá v důvěryhodné místní síti a nepovoluje přesměrování.",
+          "description": "Zadejte údaje zobrazené po nastavení Wi-Fi pomocí Improv Serial. Displeji bude předána interní URL Home Assistanta **{hub_url}**. Párování probíhá po odeslání formuláře.",
           "data": {
             "friendly_name": "Název displeje",
             "device_ip": "Místní IPv4 adresa displeje",
-            "pairing_pin": "Osmimístný PIN"
+            "pairing_pin": "Osmimístný PIN",
+            "allow_insecure_tls": "Povolit HTTPS bez ověření certifikátu"
           }
-        },
-        "confirm": {
-          "title": "Potvrzení displeje",
-          "description": "Potvrďte zařízení **{device_id}**, model **{model}**, hardware **{hardware_variant}**, firmware **{firmware_version}**. Displej bude používat URL Home Assistanta **{hub_url}** s režimem přenosu **{transport_security}**.",
-          "data": {
-            "confirm": "Potvrdit tento displej",
-            "allow_insecure_tls": "Použít HTTPS bez ověření certifikátu"
-          }
-        },
-        "insecure_warning": {
-          "title": "Potvrzení neověřeného HTTPS",
-          "description": "Spojení bude šifrované, ale displej nebude moci ověřit identitu serveru Home Assistant.",
-          "data": {"confirm": "Rozumím a chci pokračovat"}
         },
         "reconfigure": {
           "title": "Nastavení displeje",
@@ -95,13 +83,16 @@
         }
       },
       "error": {
-        "confirmation_required": "Pro pokračování je nutné potvrzení.",
+        "already_paired": "Displej je již spárovaný jinou transakcí. Obnovte jeho tovární nastavení.",
+        "certificate_policy_mismatch": "Displej potvrdil jiný režim ověřování certifikátu.",
         "device_unavailable": "Displej není na této místní adrese dostupný.",
         "empty_metadata": "Displej vrátil neúplné identifikační údaje.",
         "hub_url_invalid": "Nastavená interní URL Home Assistanta není platná.",
         "hub_url_unavailable": "Před párováním nastavte interní URL Home Assistanta.",
         "invalid_device_key": "Integrace vytvořila klíč v neplatném formátu.",
         "invalid_device_id": "Displej vrátil neplatnou MAC adresu.",
+        "invalid_certificate_policy": "Firmware displeje nepřijal nastavení ověřování certifikátu.",
+        "invalid_configuration": "Firmware displeje odmítl párovací konfiguraci.",
         "invalid_ip": "Zadejte konkrétní místní IPv4 adresu.",
         "invalid_json": "Displej vrátil neplatná JSON data.",
         "invalid_name": "Název displeje musí obsahovat 1 až 63 znaků.",

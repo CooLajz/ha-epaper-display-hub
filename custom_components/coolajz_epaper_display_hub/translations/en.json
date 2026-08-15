@@ -21,25 +21,13 @@
       "step": {
         "user": {
           "title": "Add a display",
-          "description": "Provision Wi-Fi with Improv Serial first. While the display shows its IP address and eight-digit PIN, enter both values here. Pairing uses the trusted local network and does not follow redirects.",
+          "description": "Enter the values shown after provisioning Wi-Fi with Improv Serial. The display will receive Home Assistant internal URL **{hub_url}**. Pairing starts when this form is submitted.",
           "data": {
             "friendly_name": "Display name",
             "device_ip": "Display local IPv4 address",
-            "pairing_pin": "Eight-digit PIN"
+            "pairing_pin": "Eight-digit PIN",
+            "allow_insecure_tls": "Allow HTTPS without certificate verification"
           }
-        },
-        "confirm": {
-          "title": "Confirm the display",
-          "description": "Confirm **{device_id}**, model **{model}**, hardware **{hardware_variant}**, firmware **{firmware_version}**. The display will use Home Assistant URL **{hub_url}** with transport mode **{transport_security}**.",
-          "data": {
-            "confirm": "Confirm this display",
-            "allow_insecure_tls": "Use HTTPS without certificate verification"
-          }
-        },
-        "insecure_warning": {
-          "title": "Confirm unverified HTTPS",
-          "description": "The connection will be encrypted, but the display will not be able to verify the identity of the Home Assistant server.",
-          "data": {"confirm": "I understand and want to continue"}
         },
         "reconfigure": {
           "title": "Configure the display",
@@ -95,13 +83,16 @@
         }
       },
       "error": {
-        "confirmation_required": "Confirmation is required to continue.",
+        "already_paired": "The display is already paired by another transaction. Factory-reset it first.",
+        "certificate_policy_mismatch": "The display confirmed a different certificate policy.",
         "device_unavailable": "The display is unavailable at this local address.",
         "empty_metadata": "The display returned incomplete identity information.",
         "hub_url_invalid": "The configured Home Assistant internal URL is invalid.",
         "hub_url_unavailable": "Configure an internal Home Assistant URL before pairing.",
         "invalid_device_key": "The integration generated a device key in an invalid format.",
         "invalid_device_id": "The display returned an invalid MAC address.",
+        "invalid_certificate_policy": "The display firmware rejected the certificate policy.",
+        "invalid_configuration": "The display firmware rejected the pairing configuration.",
         "invalid_ip": "Enter an explicit local IPv4 address.",
         "invalid_json": "The display returned invalid JSON.",
         "invalid_name": "The display name must contain 1 to 63 characters.",
