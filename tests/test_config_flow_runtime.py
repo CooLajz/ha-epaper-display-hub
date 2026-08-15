@@ -6,6 +6,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 homeassistant = pytest.importorskip("homeassistant")
 pytest.importorskip("pytest_homeassistant_custom_component")
 
