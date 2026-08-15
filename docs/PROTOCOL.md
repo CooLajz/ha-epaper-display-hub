@@ -367,13 +367,12 @@ one-time commands. A bad source entity affects only its own item:
   "content": {
     "main": {
       "valid": true,
-      "value": 24.1,
+      "display_value": "24.1",
       "type": "temperature",
       "label": "Living room",
-      "decimals": 1,
       "unit": "°C"
     },
-    "bottom_left": {"valid": false, "value": null},
+    "bottom_left": {"valid": false, "display_value": null},
     "weather": {
       "valid": true,
       "condition": "partlycloudy",
@@ -387,11 +386,11 @@ one-time commands. A bad source entity affects only its own item:
 }
 ```
 
-For every configured numeric slot, `decimals` is an integer from `0` through `3`
-and is authoritative for rendering the numeric value. It is independent of automatic
-or manually selected value type detection. In particular, firmware must preserve an
-explicit `0` and must not replace it with a template-specific default. The Hub rounds
-`value` to the same precision before signing the response.
+For every configured numeric slot, `display_value` is the final text prepared by the
+Hub according to the configured decimal precision. Firmware must render this string
+unchanged and must not parse, round, pad, or otherwise reformat it. `type` may select
+the visual template, while `label` and `unit` remain separate display strings. An
+invalid slot uses `null` as its `display_value`.
 
 The response repeats all request headers except the timestamp and signature values.
 Its signature uses this separate context, preventing request/response reflection:

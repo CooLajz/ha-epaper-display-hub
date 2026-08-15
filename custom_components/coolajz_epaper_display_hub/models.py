@@ -514,10 +514,11 @@ def normalize_state(
     native_unit = attributes.get("unit_of_measurement")
     return {
         "valid": valid,
-        "value": round(number, decimals) if valid and number is not None else None,
+        "display_value": (
+            f"{number:.{decimals}f}" if valid and number is not None else None
+        ),
         "type": value_type,
         "label": label or attributes.get("friendly_name"),
-        "decimals": decimals,
         "unit": unit if unit is not None else native_unit,
     }
 
@@ -528,7 +529,7 @@ def normalize_content(hass: Any, content: Mapping[str, Any]) -> dict[str, Any]:
     for slot in VALUE_SLOTS:
         selection = content.get(slot, {})
         if not isinstance(selection, Mapping) or not selection.get("entity_id"):
-            result[slot] = {"valid": False, "value": None}
+            result[slot] = {"valid": False, "display_value": None}
             continue
         state = hass.states.get(selection["entity_id"])
         result[slot] = normalize_state(

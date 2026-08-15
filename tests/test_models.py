@@ -101,15 +101,14 @@ def test_unknown_unavailable_missing_and_manual_type() -> None:
         configured_type="number",
         decimals=1,
     )
-    assert unavailable["valid"] is False and unavailable["value"] is None
-    assert unknown["valid"] is False and unknown["value"] is None
-    assert missing["valid"] is False and missing["value"] is None
+    assert unavailable["valid"] is False and unavailable["display_value"] is None
+    assert unknown["valid"] is False and unknown["display_value"] is None
+    assert missing["valid"] is False and missing["display_value"] is None
     assert manual == {
         "valid": True,
-        "value": 1001.2,
+        "display_value": "1001.2",
         "type": "number",
         "label": None,
-        "decimals": 1,
         "unit": "hPa",
     }
 
@@ -127,12 +126,18 @@ def test_auto_type_preserves_explicit_zero_decimal_places() -> None:
 
     assert normalized == {
         "valid": True,
-        "value": 1246.0,
+        "display_value": "1246",
         "type": "number",
         "label": None,
-        "decimals": 0,
         "unit": "W",
     }
+
+
+def test_display_value_preserves_configured_trailing_zeroes() -> None:
+    """The Hub sends the exact text that firmware must render."""
+    normalized = normalize_state(FakeState("24", {}), decimals=2)
+
+    assert normalized["display_value"] == "24.00"
 
 
 def test_content_and_weather_normalization_is_fault_isolated() -> None:
@@ -154,13 +159,12 @@ def test_content_and_weather_normalization_is_fault_isolated() -> None:
             "weather": "weather.home",
         },
     )
-    assert result["main"]["value"] == 23.5
+    assert result["main"]["display_value"] == "23.5"
     assert result["bottom_left"] == {
         "valid": False,
-        "value": None,
+        "display_value": None,
         "type": "number",
         "label": None,
-        "decimals": 1,
         "unit": None,
     }
     assert result["weather"]["valid"] is True
