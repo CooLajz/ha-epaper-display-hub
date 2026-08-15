@@ -361,9 +361,11 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 errors={"base": err.code},
                 description_placeholders={"hub_url": self._hub_url},
             )
-        self._runtime.store.devices[self._identity.device_id] = DeviceRecord(
-            self._identity.device_id,
-            self._device_key,
+        self._runtime.store.activate_device(
+            DeviceRecord(
+                self._identity.device_id,
+                self._device_key,
+            )
         )
         await self._runtime.store.async_save()
         return self.async_create_entry(

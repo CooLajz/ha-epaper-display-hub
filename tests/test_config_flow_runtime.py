@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -25,6 +25,7 @@ from custom_components.coolajz_epaper_display_hub.config_flow import (  # noqa: 
     _display_schema,
 )
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
+    CHECKIN_PATH,
     CONF_ALLOW_INSECURE_TLS,
     CONF_DEVICE_IP,
     CONF_FRIENDLY_NAME,
@@ -33,12 +34,15 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     DEFAULT_WAKE_SCHEDULE,
     DESIRED_PARTIAL_REFRESHES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
+    DEVICE_HEADER,
     DOMAIN,
     NONCE_HEADER,
     OTA_CHECK_TIME,
+    PROTOCOL_HEADER,
     SIGNATURE_HEADER,
     SUBENTRY_TYPE_DISPLAY,
     TIME_SYNC_PATH,
+    TIMESTAMP_HEADER,
     TRANSPORT_HTTPS_INSECURE,
     TRANSPORT_HTTPS_VERIFIED,
     WAKE_SCHEDULE_FIELD_PREFIX,
@@ -55,6 +59,8 @@ from custom_components.coolajz_epaper_display_hub.pairing import (  # noqa: E402
 )
 from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E402
     canonical_json,
+    canonical_request,
+    canonical_response,
     canonical_time_request,
     canonical_time_response,
     generate_nonce,
@@ -144,8 +150,10 @@ async def test_create_main_config_entry(hass: HomeAssistant) -> None:
     assert result["result"].unique_id == DOMAIN
 
 
-async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
-    """A paired display becomes one subentry and removal revokes its key."""
+async def test_pair_remove_unload_and_reload(
+    hass: HomeAssistant, hass_client: Any
+) -> None:
+    """Removing a display retains only a signed unpair response."""
     entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}, title="Hub")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -237,9 +245,77 @@ async def test_pair_remove_unload_and_reload(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert not entry.subentries
     assert "AA:BB:CC:DD:EE:FF" not in entry.runtime_data.store.devices
+    assert "AA:BB:CC:DD:EE:FF" in entry.runtime_data.store.revoked_devices
+    unpair_command_id = entry.runtime_data.store.revoked_devices[
+        "AA:BB:CC:DD:EE:FF"
+    ].unpair_command_id
+
+    client = await hass_client()
+    device_id = record.device_id
+    request_nonce = generate_nonce()
+    request_timestamp = int(datetime.now(UTC).timestamp())
+    request_body = canonical_json(
+        {
+            "protocol_version": 1,
+            "device_id": device_id,
+            "model": "ESPink 4.2",
+            "hardware_variant": "ESP32-S3",
+            "firmware_version": "1.0.0",
+            "telemetry": {},
+            "command_acknowledgements": [],
+        }
+    )
+    response = await client.post(
+        CHECKIN_PATH,
+        data=request_body,
+        headers={
+            DEVICE_HEADER: device_id,
+            PROTOCOL_HEADER: "1",
+            TIMESTAMP_HEADER: str(request_timestamp),
+            NONCE_HEADER: request_nonce,
+            SIGNATURE_HEADER: sign(
+                record.secret,
+                canonical_request(
+                    "POST",
+                    CHECKIN_PATH,
+                    device_id,
+                    request_timestamp,
+                    request_nonce,
+                    request_body,
+                ),
+            ),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status == 200
+    response_body = await response.read()
+    response_payload = json.loads(response_body)
+    assert set(response_payload) == {"protocol_version", "server_time", "commands"}
+    assert response_payload["commands"] == [
+        {
+            "id": unpair_command_id,
+            "type": "unpair",
+        }
+    ]
+    assert verify_signature(
+        record.secret,
+        canonical_response(
+            200,
+            CHECKIN_PATH,
+            device_id,
+            int(response.headers[TIMESTAMP_HEADER]),
+            request_nonce,
+            response_body,
+        ),
+        response.headers[SIGNATURE_HEADER],
+    )
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert await hass.config_entries.async_setup(entry.entry_id)
+    assert (
+        entry.runtime_data.store.revoked_devices[device_id].unpair_command_id
+        == unpair_command_id
+    )
 
 
 async def test_https_insecure_pairs_directly_from_first_form(
@@ -442,6 +518,11 @@ async def test_time_sync_security_and_rate_limit(
         ),
         response.headers[SIGNATURE_HEADER],
     )
+
+    assert entry.runtime_data.store.revoke_device(device_id)
+    await entry.runtime_data.store.async_save()
+    assert device_id not in entry.runtime_data.store.devices
+    assert device_id in entry.runtime_data.store.revoked_devices
 
     replay = await request(device_id, secret, valid_nonce)
     assert replay.status == 401

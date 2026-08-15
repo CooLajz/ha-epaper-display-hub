@@ -519,8 +519,40 @@ entity's native value is already expressed in that unit.
 
 ## Key rotation and revocation
 
-Removing the display Subentry revokes and deletes its server-side key during reload;
-future requests return `unknown_device`. The device must delete its local key and be
-paired again. Protocol v1 performs rotation as revoke plus a new pairing. Compromise
-of one key therefore affects only that MAC and cannot authorize Home Assistant API
-calls or other displays.
+Removing one display Subentry removes its entities and active configuration but moves
+its per-device key into a restricted `revoked_pending_unpair` record. The record retains
+only the key, replay-protection state, wake schedule needed for freshness validation,
+and one stable command ID. It cannot access content, desired configuration, telemetry
+storage, OTA scheduling, or another display.
+
+The next valid signed `/check-in` receives this reduced response instead of the normal
+response schema:
+
+```json
+{
+  "protocol_version": 1,
+  "server_time": "2026-08-15T22:17:03+02:00",
+  "commands": [
+    {"id": "durable-url-safe-command-id", "type": "unpair"}
+  ]
+}
+```
+
+The response uses the normal `EPD-HUB-RESPONSE-V1` canonical signature and remains
+bound to the check-in nonce. It deliberately contains no `revision`, `desired_config`,
+`content`, `next_wake_at`, `sleep_seconds`, or other command. Firmware must first
+verify the exact-body HMAC and response binding, then recognize this restricted schema.
+After accepting `unpair`, it deletes the per-device key, Hub URL and transport settings,
+pending Hub commands, and any trusted Hub state, then immediately enters pairing mode,
+shows a fresh PIN and local IP address, and does not refresh normal display content.
+
+`unpair` is not acknowledged: erasing the key prevents a later signed ACK. The Hub
+therefore repeats the same command ID on every authenticated check-in. If trusted UTC
+was lost, the restricted key remains valid only for signed `/time-sync` followed by the
+check-in. A new successful pairing of the same MAC replaces the restricted record.
+Deleting the complete Hub config entry clears all active and restricted keys, so any
+remaining display must be reset or reflashed manually.
+
+Protocol v1 performs key rotation as removal, verified device-side unpairing, and a new
+pairing. Compromise of one key therefore affects only that MAC and cannot authorize Home
+Assistant API calls or other displays.

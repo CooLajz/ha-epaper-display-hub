@@ -61,6 +61,7 @@ DEFAULT_OTA_CHECK_TIME = "03:00:00"
 OTA_COMMAND_TYPE = "ota_check"
 OTA_COMMAND_SOURCE_MANUAL = "manual"
 OTA_COMMAND_SOURCE_AUTOMATIC = "automatic"
+UNPAIR_COMMAND_TYPE = "unpair"
 OTA_STATUS_VALUES = ("current", "updated", "failed")
 WAKE_SCHEDULE_FIELD_PREFIX = "wake_interval_"
 

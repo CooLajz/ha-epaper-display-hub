@@ -19,7 +19,7 @@ from .const import (
     PROTOCOL_VERSION,
     REPLAY_GRACE,
 )
-from .models import DeviceRecord, ProtocolError
+from .models import DeviceRecord, ProtocolError, RevokedDeviceRecord
 from .scheduling import normalize_wake_schedule
 
 NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{22,128}$")
@@ -117,7 +117,9 @@ def generate_nonce() -> str:
     return secrets.token_urlsafe(24)
 
 
-def validate_nonce(nonce: str, record: DeviceRecord | None = None) -> None:
+def validate_nonce(
+    nonce: str, record: DeviceRecord | RevokedDeviceRecord | None = None
+) -> None:
     """Require at least 128 random URL-safe bits and reject known nonces."""
     if not NONCE_RE.fullmatch(nonce):
         raise ProtocolError("invalid_nonce", "Nonce format is invalid")
@@ -132,7 +134,7 @@ def replay_window(expected_interval_minutes: int) -> timedelta:
 
 
 def validate_freshness(
-    record: DeviceRecord,
+    record: DeviceRecord | RevokedDeviceRecord,
     timestamp: int,
     nonce: str,
     *,
@@ -148,7 +150,7 @@ def validate_freshness(
         raise ProtocolError("stale_request", "Timestamp is outside the accepted window")
 
 
-def remember_nonce(record: DeviceRecord, nonce: str) -> None:
+def remember_nonce(record: DeviceRecord | RevokedDeviceRecord, nonce: str) -> None:
     """Persist a bounded replay history after successful authentication."""
     record.nonces.append(nonce)
     del record.nonces[:-NONCE_HISTORY_SIZE]

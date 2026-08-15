@@ -81,6 +81,9 @@ class CheckinView(HomeAssistantView):
             nonce = request.headers.get(NONCE_HEADER, "")
             supplied = request.headers.get(SIGNATURE_HEADER, "")
             record = runtime.store.devices.get(device_id)
+            revoked = record is None
+            if revoked:
+                record = runtime.store.revoked_devices.get(device_id)
             if record is None:
                 raise ProtocolError("unknown_device", "Device is not paired")
             validate_freshness(record, timestamp, nonce)
@@ -94,14 +97,22 @@ class CheckinView(HomeAssistantView):
             validate_checkin_payload(payload, device_id)
             remember_nonce(record, nonce)
             await runtime.store.async_save()
-            content = runtime.content_for(device_id)
             response_created_at = datetime.now(UTC).replace(microsecond=0)
-            response_payload = await runtime.coordinator.async_process_checkin(
-                record,
-                payload,
-                content,
-                response_time=response_created_at,
-            )
+            if revoked:
+                timezone = dt_util.get_time_zone(hass.config.time_zone) or UTC
+                response_payload = {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "server_time": response_created_at.astimezone(timezone).isoformat(),
+                    "commands": record.commands_for_delivery(),
+                }
+            else:
+                content = runtime.content_for(device_id)
+                response_payload = await runtime.coordinator.async_process_checkin(
+                    record,
+                    payload,
+                    content,
+                    response_time=response_created_at,
+                )
             response_body = json.dumps(
                 response_payload,
                 ensure_ascii=False,
@@ -115,16 +126,19 @@ class CheckinView(HomeAssistantView):
                     200, request.path, device_id, response_time, nonce, response_body
                 ),
             )
-            response_command_ids = {
-                str(item["id"]) for item in response_payload["commands"]
-            }
-            delivery_changed = record.mark_configuration_delivered(
-                response_payload["revision"]
-            )
-            delivery_changed |= record.mark_commands_delivered(response_command_ids)
-            if delivery_changed:
-                await runtime.store.async_save()
-                runtime.coordinator.async_update_listeners()
+            if not revoked:
+                response_command_ids = {
+                    str(item["id"]) for item in response_payload["commands"]
+                }
+                delivery_changed = record.mark_configuration_delivered(
+                    response_payload["revision"]
+                )
+                delivery_changed |= record.mark_commands_delivered(
+                    response_command_ids
+                )
+                if delivery_changed:
+                    await runtime.store.async_save()
+                    runtime.coordinator.async_update_listeners()
             return web.Response(
                 body=response_body,
                 status=200,
@@ -168,7 +182,9 @@ class TimeSyncView(HomeAssistantView):
                 )
             device_id = format_device_id(str(payload.get("device_id", "")))
             nonce = str(payload.get("nonce", ""))
-            record = runtime.store.devices.get(device_id)
+            record = runtime.store.devices.get(
+                device_id
+            ) or runtime.store.revoked_devices.get(device_id)
             if record is None:
                 raise ProtocolError("unknown_device", "Device is not paired")
             validate_nonce(nonce, record)

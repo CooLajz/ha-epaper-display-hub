@@ -21,6 +21,7 @@ from .const import (
     OTA_COMMAND_TYPE,
     OTA_STATUS_VALUES,
     PROTOCOL_VERSION,
+    UNPAIR_COMMAND_TYPE,
     VALUE_SLOTS,
 )
 from .scheduling import normalize_wake_schedule
@@ -400,6 +401,55 @@ class DeviceRecord:
             if optional_number(telemetry.get("board_humidity")) is not None:
                 seen.add("board_humidity")
         self.capabilities_seen = sorted(seen)
+
+
+@dataclass(slots=True)
+class RevokedDeviceRecord:
+    """Minimal credentials retained only to deliver a signed unpair command."""
+
+    device_id: str
+    secret: str
+    wake_schedule: dict[str, int]
+    nonces: list[str]
+    unpair_command_id: str
+
+    @classmethod
+    def from_device(
+        cls, record: DeviceRecord, command_id: str
+    ) -> RevokedDeviceRecord:
+        """Restrict one active device record to the revocation-only state."""
+        return cls(
+            device_id=record.device_id,
+            secret=record.secret,
+            wake_schedule=deepcopy(record.wake_schedule),
+            nonces=list(record.nonces),
+            unpair_command_id=command_id,
+        )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> RevokedDeviceRecord:
+        """Load the current revocation record schema."""
+        return cls(
+            device_id=format_device_id(str(data["device_id"])),
+            secret=str(data["secret"]),
+            wake_schedule=normalize_wake_schedule(data.get("wake_schedule")),
+            nonces=[str(item) for item in data.get("nonces", [])],
+            unpair_command_id=str(data["unpair_command_id"]),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialize only the values required for authenticated unpairing."""
+        return {
+            "device_id": self.device_id,
+            "secret": self.secret,
+            "wake_schedule": self.wake_schedule,
+            "nonces": self.nonces,
+            "unpair_command_id": self.unpair_command_id,
+        }
+
+    def commands_for_delivery(self) -> list[dict[str, str]]:
+        """Return the single stable public unpair command."""
+        return [{"id": self.unpair_command_id, "type": UNPAIR_COMMAND_TYPE}]
 
 
 def validate_checkin_payload(payload: Mapping[str, Any], device_id: str) -> None:

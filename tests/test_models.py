@@ -7,6 +7,7 @@ import pytest
 from custom_components.coolajz_epaper_display_hub.models import (
     DeviceRecord,
     ProtocolError,
+    RevokedDeviceRecord,
     normalize_content,
     normalize_partial_refreshes,
     normalize_state,
@@ -40,6 +41,29 @@ def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
         normalize_partial_refreshes(21)
     with pytest.raises(ProtocolError, match="must be whole"):
         normalize_partial_refreshes(1.5)
+
+
+def test_revoked_record_retains_only_unpair_credentials_and_command() -> None:
+    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
+    record.nonces.append("AAAAAAAAAAAAAAAAAAAAAA")
+    record.last_entity_data = {"battery_percent": 80}
+    record.pending_commands.append({"id": "ota-1", "type": "ota_check"})
+
+    revoked = RevokedDeviceRecord.from_device(record, "unpair-1")
+
+    assert revoked.device_id == record.device_id
+    assert revoked.secret == record.secret
+    assert revoked.nonces == record.nonces
+    assert revoked.wake_schedule == record.wake_schedule
+    assert revoked.commands_for_delivery() == [{"id": "unpair-1", "type": "unpair"}]
+    assert set(revoked.as_dict()) == {
+        "device_id",
+        "secret",
+        "wake_schedule",
+        "nonces",
+        "unpair_command_id",
+    }
+    assert RevokedDeviceRecord.from_dict(revoked.as_dict()) == revoked
 
 
 def test_complete_and_partial_telemetry_capabilities() -> None:

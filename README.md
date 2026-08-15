@@ -120,10 +120,17 @@ payload schema are in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Remove a display and revoke its key
 
-Remove the Display subentry in E-paper Display Hub. On integration reload its private
-key is removed, so subsequent check-ins are rejected. Delete the key and hub URL from
-the physical display as well. To rotate a key in protocol v1, remove and pair the
-display again.
+Remove the Display subentry in E-paper Display Hub. Its entities disappear immediately,
+but the Hub retains a restricted revocation record containing only the device key,
+replay state, and one durable `unpair` command. At the display's next authenticated
+check-in, the Hub returns a signed response containing only that command. Compatible
+firmware verifies the complete response, deletes its Hub credentials, and enters local
+pairing mode. The Hub repeats the command until the display stops using the old key.
+
+The restricted record cannot receive content, desired configuration, OTA commands, or
+ordinary telemetry updates. Pairing the same MAC again replaces it with new credentials.
+Removing the complete Hub config entry deletes active and restricted keys immediately;
+displays which were still paired must then be reset or reflashed manually.
 
 ## Development validation
 
@@ -132,7 +139,8 @@ Local unit tests cover protocol canonicalization, pairing identity validation,
 idempotent transaction reuse, HMAC proof binding, replay handling, telemetry
 capability rules, desired/reported revisions, durable commands, content normalization,
 hourly boundaries, daylight-saving transitions, manual OTA cancellation, durable OTA
-redelivery, daily schedule deduplication, and Hub-timezone OTA triggering.
+redelivery, daily schedule deduplication, Hub-timezone OTA triggering, and restricted
+signed unpair responses after display removal.
 The suite also covers signed time recovery, nonce binding, invalid signatures,
 unknown devices, short nonces, replay rejection, and per-device rate limiting. A real
 Home Assistant runtime is still required

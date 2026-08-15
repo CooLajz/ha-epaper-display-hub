@@ -19,6 +19,7 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceEntry
 
     from .coordinator import HubCoordinator
     from .security import DeviceRateLimiter
@@ -70,8 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     }
     removed_ids = set(store.devices) - configured_ids
     for device_id in removed_ids:
-        # Removing a subentry is key revocation; no orphan key remains usable.
-        store.devices.pop(device_id, None)
+        store.revoke_device(device_id)
     if removed_ids:
         await store.async_save()
 
@@ -113,3 +113,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool
 async def _async_reload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> None:
     """Reload after a display is added, reconfigured, or removed."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: HubConfigEntry,
+    device_entry: DeviceEntry,
+) -> bool:
+    """Remove one display and retain only a signed pending unpair command."""
+    device_id = next(
+        (
+            identifier
+            for domain, identifier in device_entry.identifiers
+            if domain == DOMAIN
+        ),
+        None,
+    )
+    if device_id is None:
+        return False
+    subentry_id = next(
+        (
+            subentry_id
+            for subentry_id, subentry in config_entry.subentries.items()
+            if subentry.data.get(CONF_DEVICE_ID) == device_id
+        ),
+        None,
+    )
+    if subentry_id is None:
+        return False
+    if config_entry.runtime_data.store.revoke_device(device_id):
+        await config_entry.runtime_data.store.async_save()
+    hass.config_entries.async_remove_subentry(config_entry, subentry_id)
+    return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HubConfigEntry) -> None:
+    """Delete every retained key when the complete Hub is removed."""
+    from .store import HubStore
+
+    store = HubStore(hass)
+    await store.async_load()
+    await store.async_clear()
