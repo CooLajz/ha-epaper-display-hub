@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HubConfigEntry
-from .const import CONF_DEVICE_ID
+from .const import CONF_DEVICE_ID, OTA_STATUS_VALUES
 from .coordinator import telemetry_value
 from .entity import EpaperDisplayEntity
 
@@ -99,6 +99,24 @@ SENSORS = (
     EpaperSensorDescription(
         key="firmware_version",
         telemetry_key="firmware_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
+        key="last_ota_check",
+        telemetry_key="last_ota_check",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
+        key="last_ota_status",
+        telemetry_key="last_ota_status",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(OTA_STATUS_VALUES),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
+        key="available_firmware_version",
+        telemetry_key="available_firmware_version",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )

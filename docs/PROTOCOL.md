@@ -18,7 +18,9 @@ Recommended firmware migration order:
    Assistant Long-Lived Access Token.
 4. Persist command acknowledgements until a later successful check-in confirms that
    the Hub accepted them.
-5. After feature parity is physically verified, remove the legacy token client, local
+5. Treat `ota_check` as an idempotent durable command. Persist its ID before starting
+   the check and acknowledge it only after the outcome rules below are satisfied.
+6. After feature parity is physically verified, remove the legacy token client, local
    configuration web, local wake scheduler, and alternate non-Hub runtime paths from
    the firmware repository.
 
@@ -314,7 +316,6 @@ response_signature = e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d
     "applied": true,
     "values": {
       "show_battery_voltage": true,
-      "auto_ota": false,
       "partial_refreshes_between_full": 10
     }
   },
@@ -329,9 +330,12 @@ response_signature = e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d
     "environment_sensor_present": true,
     "board_temperature": 24.3,
     "board_humidity": 46.1,
-    "last_data_status": "ok"
+    "last_data_status": "ok",
+    "last_ota_check": "2026-08-15T03:00:02+02:00",
+    "last_ota_status": "current",
+    "available_firmware_version": "1.0.0"
   },
-  "command_acknowledgements": ["full-refresh-42"]
+  "command_acknowledgements": ["durable-url-safe-command-id"]
 }
 ```
 
@@ -357,7 +361,6 @@ one-time commands. A bad source entity affects only its own item:
     "pending": true,
     "values": {
       "show_battery_voltage": true,
-      "auto_ota": false,
       "partial_refreshes_between_full": 10
     }
   },
@@ -377,7 +380,9 @@ one-time commands. A bad source entity affects only its own item:
       "humidity": 58.0
     }
   },
-  "commands": []
+  "commands": [
+    {"id": "durable-url-safe-command-id", "type": "ota_check"}
+  ]
 }
 ```
 
@@ -447,6 +452,61 @@ One-time commands remain in private storage and are returned again until firmwar
 reports their IDs in `command_acknowledgements`. Firmware must execute each command ID
 idempotently and retain its acknowledgement across deep sleep until a later successful
 check-in. This avoids losing a command when a response or display refresh fails.
+
+## Hub-owned OTA orchestration
+
+OTA timing and command creation belong exclusively to the Hub. Firmware has no fixed
+24-hour OTA schedule. Each display has an **Automatic OTA** switch and a local daily
+check time. Home Assistant evaluates that wall-clock time in its configured timezone,
+including daylight-saving transitions. When automatic OTA is enabled, the Hub creates
+at most one command for each local calendar day, at the configured time or as soon as
+the Hub next evaluates the schedule after that time. The first check-in at or after the
+due time therefore receives the command. Disabling automatic OTA prevents future
+automatic commands but does not retract a command that is already in the durable queue.
+Only one automatic OTA command may be outstanding. If a failed older command is still
+waiting for acknowledgement at the next daily time, the Hub continues delivering that
+ID; after it is acknowledged, the current day's due command can be created without
+building an unbounded queue.
+
+The independent **OTA on next wake** switch creates a persistent manual request even
+when automatic OTA is disabled. It can be turned off to cancel the request only before
+the Hub includes it in a signed check-in response. Once included, the switch returns to
+off automatically while the internal command remains queued. Turning the switch off at
+that point cannot cancel delivery or acknowledgement tracking.
+
+The only protocol-v1 OTA command is:
+
+```json
+{
+  "id": "durable-url-safe-command-id",
+  "type": "ota_check"
+}
+```
+
+The Hub stores command source and delivery state privately, but those fields are never
+part of the public `commands` item. The same public command is included in every signed
+check-in response until the request contains its exact ID in
+`command_acknowledgements`.
+
+Firmware must verify the HMAC over the exact response body before reading or applying
+`commands`. It must persist the ID of an accepted, in-progress, or completed OTA command
+and must never start the same ID twice. Acknowledgement rules are:
+
+- no update available: report the ID after the check completes;
+- update installed successfully: persist completion before reboot and report the ID
+  from the new firmware after startup;
+- download or installation failure: report `failed` telemetry but do not acknowledge
+  the ID, allowing the Hub to redeliver it.
+
+The next check-in after a completed attempt reports `last_ota_check` as a timezone-aware
+ISO 8601 timestamp and `last_ota_status` as `current`, `updated`, or `failed`.
+`available_firmware_version` is optional and is included only when firmware can
+determine it. The installed version continues to use the top-level `firmware_version`.
+These diagnostic values describe the last completed attempt; they do not replace the
+durable command acknowledgement.
+
+`auto_ota` is not a firmware desired-configuration key. The Hub translates both the
+manual switch and daily schedule into the same signed `ota_check` command contract.
 
 A configured unit override changes only the short unit label sent to the display; it
 does not convert the numeric value. It should therefore be used only when the selected

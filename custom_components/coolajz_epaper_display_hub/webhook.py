@@ -115,7 +115,14 @@ class CheckinView(HomeAssistantView):
                     200, request.path, device_id, response_time, nonce, response_body
                 ),
             )
-            if record.mark_configuration_delivered(response_payload["revision"]):
+            response_command_ids = {
+                str(item["id"]) for item in response_payload["commands"]
+            }
+            delivery_changed = record.mark_configuration_delivered(
+                response_payload["revision"]
+            )
+            delivery_changed |= record.mark_commands_delivered(response_command_ids)
+            if delivery_changed:
                 await runtime.store.async_save()
                 runtime.coordinator.async_update_listeners()
             return web.Response(

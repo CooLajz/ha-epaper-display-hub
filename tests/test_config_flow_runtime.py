@@ -22,16 +22,19 @@ from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa
     DESCRIPTIONS as BINARY_SENSOR_DESCRIPTIONS,
 )
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
+    AUTO_OTA_ENABLED,
     CONF_ALLOW_INSECURE_TLS,
     CONF_DEVICE_IP,
     CONF_FRIENDLY_NAME,
     CONF_PAIRING_PIN,
     CONF_TRANSPORT_SECURITY,
     DEFAULT_DESIRED,
+    DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
     DESIRED_SHOW_BATTERY_VOLTAGE,
     DOMAIN,
     NONCE_HEADER,
+    OTA_CHECK_TIME,
     SIGNATURE_HEADER,
     SUBENTRY_TYPE_DISPLAY,
     TIME_SYNC_PATH,
@@ -95,6 +98,8 @@ def _reconfigure_input(*, show_battery_voltage: bool = True) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
         **DEFAULT_DESIRED,
+        AUTO_OTA_ENABLED: False,
+        OTA_CHECK_TIME: DEFAULT_OTA_CHECK_TIME,
         DESIRED_SHOW_BATTERY_VOLTAGE: show_battery_voltage,
         **{
             f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(

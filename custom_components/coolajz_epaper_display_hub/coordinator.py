@@ -18,6 +18,7 @@ from .const import (
 )
 from .models import DeviceRecord, normalize_content, optional_number
 from .scheduling import next_wake
+from .security import generate_nonce
 from .store import HubStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ _PERSISTED_NUMERIC_TELEMETRY = {
     "active_runtime_ms",
     "board_temperature",
     "board_humidity",
+}
+_PERSISTED_TEXT_TELEMETRY = {
+    "last_ota_status",
+    "available_firmware_version",
 }
 
 
@@ -92,11 +97,30 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             last_refresh, bool
         ):
             persisted["last_refresh"] = last_refresh
+        last_ota_check = telemetry.get("last_ota_check")
+        if isinstance(last_ota_check, str):
+            persisted["last_ota_check"] = last_ota_check
+        for key in _PERSISTED_TEXT_TELEMETRY:
+            value = telemetry.get(key)
+            if isinstance(value, str):
+                persisted[key] = value
         firmware_version = payload.get("firmware_version")
         if isinstance(firmware_version, str):
             persisted["firmware_version"] = firmware_version
         persisted["last_transfer_success"] = True
         return persisted
+
+    async def async_schedule_automatic_ota(self, now: datetime | None = None) -> bool:
+        """Create due daily OTA commands in the Home Assistant timezone."""
+        timezone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
+        local_now = (now or datetime.now(UTC)).astimezone(timezone)
+        changed = False
+        for record in self.store.devices.values():
+            changed |= record.schedule_automatic_ota(local_now, generate_nonce())
+        if changed:
+            await self.store.async_save()
+            self.async_update_listeners()
+        return changed
 
     @callback
     def device_data(self, device_id: str) -> dict[str, Any]:
@@ -143,6 +167,14 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         record.next_wake_at = planned_wake.isoformat()
         record.last_planned_interval_seconds = sleep_seconds
         record.last_entity_data = self._entity_data_for_storage(telemetry, payload)
+        acknowledgements = {
+            str(item) for item in payload.get("command_acknowledgements", [])
+        }
+        record.acknowledge_commands(acknowledgements)
+        record.schedule_automatic_ota(
+            now.astimezone(timezone),
+            generate_nonce(),
+        )
         device_data = {
             **telemetry,
             "last_contact": now,
@@ -158,16 +190,7 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         updated[record.device_id] = device_data
         self.async_set_updated_data(updated)
 
-        acknowledgements = {
-            str(item) for item in payload.get("command_acknowledgements", [])
-        }
-        if acknowledgements:
-            record.pending_commands = [
-                item
-                for item in record.pending_commands
-                if str(item.get("id", "")) not in acknowledgements
-            ]
-        commands = [dict(item) for item in record.pending_commands]
+        commands = record.commands_for_delivery()
         await self.store.async_save()
         return {
             "protocol_version": PROTOCOL_VERSION,

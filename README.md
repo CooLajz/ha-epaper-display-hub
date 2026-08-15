@@ -63,17 +63,31 @@ selectors, automatic device-class detection, manual type override, label, decima
 places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 
-Desired configuration currently includes battery voltage display, automatic OTA, a
-24-hour wake schedule, and partial-refresh count. The desired
-revision advances immediately in Home Assistant, but a sleeping device may not apply
-it until a later wake. The **Configuration pending** binary sensor remains on only
-until the Hub includes the latest revision in a signed check-in response. The applied
-revision remains tracked separately for protocol diagnostics.
+Desired firmware configuration currently includes battery voltage display and the
+partial-refresh count. The 24-hour wake schedule is owned and evaluated by the Hub.
+The desired revision advances immediately in Home Assistant, but a sleeping device
+may not apply it until a later wake. The **Configuration pending** binary sensor
+remains on only until the Hub includes the latest revision in a signed check-in
+response. The applied revision remains tracked separately for protocol diagnostics.
 
 The hub calculates the nearest future schedule boundary in Home Assistant's timezone
 and returns `server_time`, `next_wake_at`, and authoritative `sleep_seconds`. The
 **Next wake** and **Last planned interval** sensors expose the same persisted plan;
 availability remains true until two minutes after the expected wake time.
+
+OTA is also orchestrated exclusively by the Hub. Each display exposes an
+**Automatic OTA** switch, a **Daily OTA check time** entity, and an independent
+**OTA on next wake** switch. The daily time is evaluated in Home Assistant's timezone.
+Both automatic and manual requests create the same durable `ota_check` command, which
+is repeated until firmware acknowledges its ID. The manual switch turns off after the
+first signed delivery; this does not remove the internally queued command. Firmware
+must verify the complete response HMAC before applying commands, persist processed IDs
+for idempotence, and follow the completion/acknowledgement rules in
+[protocol v1](docs/PROTOCOL.md#hub-owned-ota-orchestration).
+
+The Hub exposes the last OTA check time, its `current` / `updated` / `failed` status,
+and the available firmware version when the display can determine it. The installed
+version remains available separately as **Firmware version**.
 
 The latest known entity values are persisted and restored after a Home Assistant
 restart, so sleeping displays do not temporarily become `unknown`. The persisted
@@ -112,7 +126,8 @@ The repository includes pytest, Ruff, mypy, HACS validation, and hassfest workfl
 Local unit tests cover protocol canonicalization, pairing identity validation,
 idempotent transaction reuse, HMAC proof binding, replay handling, telemetry
 capability rules, desired/reported revisions, durable commands, content normalization,
-hourly boundaries, and daylight-saving transitions.
+hourly boundaries, daylight-saving transitions, manual OTA cancellation, durable OTA
+redelivery, daily schedule deduplication, and Hub-timezone OTA triggering.
 The suite also covers signed time recovery, nonce binding, invalid signatures,
 unknown devices, short nonces, replay rejection, and per-device rate limiting. A real
 Home Assistant runtime is still required

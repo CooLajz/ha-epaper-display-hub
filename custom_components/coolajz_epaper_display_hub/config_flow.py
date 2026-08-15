@@ -27,9 +27,11 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     TextSelector,
+    TimeSelector,
 )
 
 from .const import (
+    AUTO_OTA_ENABLED,
     CONF_ALLOW_INSECURE_TLS,
     CONF_CONTENT,
     CONF_DEVICE_ID,
@@ -43,11 +45,12 @@ from .const import (
     CONF_PROTOCOL_VERSION,
     CONF_TRANSPORT_SECURITY,
     DEFAULT_DESIRED,
+    DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
-    DESIRED_AUTO_OTA,
     DESIRED_PARTIAL_REFRESHES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
     DOMAIN,
+    OTA_CHECK_TIME,
     PROTOCOL_VERSION,
     SLOT_BOTTOM_LEFT,
     SLOT_BOTTOM_RIGHT,
@@ -152,9 +155,8 @@ DISPLAY_SCHEMA = vol.Schema(
             DESIRED_SHOW_BATTERY_VOLTAGE,
             default=DEFAULT_DESIRED[DESIRED_SHOW_BATTERY_VOLTAGE],
         ): BooleanSelector(),
-        vol.Required(
-            DESIRED_AUTO_OTA, default=DEFAULT_DESIRED[DESIRED_AUTO_OTA]
-        ): BooleanSelector(),
+        vol.Required(AUTO_OTA_ENABLED, default=False): BooleanSelector(),
+        vol.Required(OTA_CHECK_TIME, default=DEFAULT_OTA_CHECK_TIME): TimeSelector(),
         vol.Required(
             DESIRED_PARTIAL_REFRESHES,
             default=DEFAULT_DESIRED[DESIRED_PARTIAL_REFRESHES],
@@ -188,8 +190,15 @@ def _suggested_values(
     subentry: Any,
     desired: Mapping[str, Any],
     wake_schedule: Mapping[str, Any],
+    automatic_ota_enabled: bool,
+    ota_check_time: str,
 ) -> dict[str, Any]:
-    values: dict[str, Any] = {CONF_FRIENDLY_NAME: subentry.title, **desired}
+    values: dict[str, Any] = {
+        CONF_FRIENDLY_NAME: subentry.title,
+        **desired,
+        AUTO_OTA_ENABLED: automatic_ota_enabled,
+        OTA_CHECK_TIME: ota_check_time,
+    }
     for hour in range(24):
         values[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"] = str(
             wake_schedule.get(str(hour), DEFAULT_WAKE_SCHEDULE[str(hour)])
@@ -400,9 +409,14 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 for hour in range(24)
             }
             configuration_changed = record.update_configuration(desired, wake_schedule)
-            if configuration_changed:
+            ota_settings_changed = record.update_ota_settings(
+                bool(user_input[AUTO_OTA_ENABLED]), user_input[OTA_CHECK_TIME]
+            )
+            if configuration_changed or ota_settings_changed:
                 await self._runtime.store.async_save()
                 self._runtime.coordinator.async_update_listeners()
+            if record.automatic_ota_enabled:
+                await self._runtime.coordinator.async_schedule_automatic_ota()
             data = dict(subentry.data)
             data[CONF_CONTENT] = _content_from_input(user_input)
             return self.async_update_and_abort(
@@ -415,6 +429,12 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
                 DISPLAY_SCHEMA,
-                _suggested_values(subentry, record.desired, record.wake_schedule),
+                _suggested_values(
+                    subentry,
+                    record.desired,
+                    record.wake_schedule,
+                    record.automatic_ota_enabled,
+                    record.ota_check_time,
+                ),
             ),
         )

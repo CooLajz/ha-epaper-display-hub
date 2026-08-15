@@ -53,6 +53,7 @@
             "extra_humidity": "Entita doplňkové vlhkosti",
             "show_battery_voltage": "Zobrazovat napětí baterie",
             "auto_ota": "Automatické OTA aktualizace",
+            "ota_check_time": "Čas denní OTA kontroly",
             "partial_refreshes_between_full": "Počet partial refreshů mezi full refreshi",
             "wake_interval_00": "00:00–00:59 – interval probouzení (minuty)",
             "wake_interval_01": "01:00–01:59 – interval probouzení (minuty)",
@@ -129,6 +130,16 @@
       "active_runtime": {"name": "Poslední aktivní doba"},
       "rssi": {"name": "RSSI"},
       "firmware_version": {"name": "Verze firmwaru"},
+      "last_ota_check": {"name": "Poslední OTA kontrola"},
+      "last_ota_status": {
+        "name": "Stav poslední OTA kontroly",
+        "state": {
+          "current": "Aktuální",
+          "updated": "Aktualizováno",
+          "failed": "Selhalo"
+        }
+      },
+      "available_firmware_version": {"name": "Dostupná verze firmwaru"},
       "board_temperature": {"name": "Teplota desky"},
       "board_humidity": {"name": "Vlhkost desky"}
     },
@@ -139,7 +150,11 @@
     },
     "switch": {
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
-      "auto_ota": {"name": "Automatické OTA aktualizace"}
+      "auto_ota": {"name": "Automatická OTA"},
+      "ota_next_wake": {"name": "OTA při příštím probuzení"}
+    },
+    "time": {
+      "ota_check_time": {"name": "Čas denní OTA kontroly"}
     }
   }
 }

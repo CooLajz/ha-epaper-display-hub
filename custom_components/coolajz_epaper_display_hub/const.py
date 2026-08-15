@@ -11,7 +11,7 @@ PROTOCOL_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"
 STORAGE_VERSION = 1
 
-PLATFORMS = ["sensor", "binary_sensor", "switch"]
+PLATFORMS = ["sensor", "binary_sensor", "switch", "time"]
 SUBENTRY_TYPE_DISPLAY = "display"
 
 API_BASE = f"/api/{DOMAIN}/v1"
@@ -53,8 +53,14 @@ TRANSPORT_SECURITY_OPTIONS = (
 )
 
 DESIRED_SHOW_BATTERY_VOLTAGE = "show_battery_voltage"
-DESIRED_AUTO_OTA = "auto_ota"
 DESIRED_PARTIAL_REFRESHES = "partial_refreshes_between_full"
+AUTO_OTA_ENABLED = "auto_ota"
+OTA_CHECK_TIME = "ota_check_time"
+DEFAULT_OTA_CHECK_TIME = "03:00:00"
+OTA_COMMAND_TYPE = "ota_check"
+OTA_COMMAND_SOURCE_MANUAL = "manual"
+OTA_COMMAND_SOURCE_AUTOMATIC = "automatic"
+OTA_STATUS_VALUES = ("current", "updated", "failed")
 WAKE_SCHEDULE_FIELD_PREFIX = "wake_interval_"
 
 DEFAULT_WAKE_SCHEDULE = {
@@ -63,7 +69,6 @@ DEFAULT_WAKE_SCHEDULE = {
 
 DEFAULT_DESIRED = {
     DESIRED_SHOW_BATTERY_VOLTAGE: True,
-    DESIRED_AUTO_OTA: False,
     DESIRED_PARTIAL_REFRESHES: DEFAULT_PARTIAL_REFRESHES,
 }
 

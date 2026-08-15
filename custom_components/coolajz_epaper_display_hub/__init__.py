@@ -93,14 +93,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     )
     entry.runtime_data = runtime
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+
+    async def _async_minute_tick(now: Any) -> None:
+        if not await coordinator.async_schedule_automatic_ota(now):
+            coordinator.async_update_listeners()
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     entry.async_on_unload(
         async_track_time_interval(
             hass,
-            lambda now: coordinator.async_update_listeners(),
+            _async_minute_tick,
             timedelta(minutes=1),
         )
     )
+    await coordinator.async_schedule_automatic_ota()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

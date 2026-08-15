@@ -6,10 +6,20 @@ import re
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Any
 
-from .const import DEFAULT_DESIRED, DEFAULT_WAKE_SCHEDULE, PROTOCOL_VERSION, VALUE_SLOTS
+from .const import (
+    DEFAULT_DESIRED,
+    DEFAULT_OTA_CHECK_TIME,
+    DEFAULT_WAKE_SCHEDULE,
+    OTA_COMMAND_SOURCE_AUTOMATIC,
+    OTA_COMMAND_SOURCE_MANUAL,
+    OTA_COMMAND_TYPE,
+    OTA_STATUS_VALUES,
+    PROTOCOL_VERSION,
+    VALUE_SLOTS,
+)
 from .scheduling import normalize_wake_schedule
 
 MAC_RE = re.compile(r"^[0-9A-F]{12}$")
@@ -59,6 +69,17 @@ def optional_number(value: Any) -> float | None:
     return number
 
 
+def normalize_ota_check_time(value: Any) -> str:
+    """Return one local wall-clock time with second precision."""
+    try:
+        parsed = value if isinstance(value, time) else time.fromisoformat(str(value))
+    except ValueError as err:
+        raise ProtocolError("invalid_ota_time", "OTA check time is invalid") from err
+    if parsed.tzinfo is not None:
+        raise ProtocolError("invalid_ota_time", "OTA check time must be local")
+    return parsed.replace(microsecond=0).isoformat(timespec="seconds")
+
+
 @dataclass(slots=True)
 class DeviceRecord:
     """Persistent security and desired-state record for one display."""
@@ -81,6 +102,9 @@ class DeviceRecord:
     next_wake_at: str | None = None
     last_planned_interval_seconds: int | None = None
     last_entity_data: dict[str, Any] = field(default_factory=dict)
+    automatic_ota_enabled: bool = False
+    ota_check_time: str = DEFAULT_OTA_CHECK_TIME
+    last_automatic_ota_date: str | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> DeviceRecord:
@@ -96,8 +120,22 @@ class DeviceRecord:
             if isinstance(stored_desired, Mapping)
             else None
         )
+        legacy_auto_ota = isinstance(stored_desired, Mapping) and (
+            "auto_ota" in stored_desired
+        )
         desired_revision = max(1, int(data.get("desired_revision", 1)))
+        if legacy_auto_ota:
+            # Removing this firmware-facing key changes the desired payload.
+            desired_revision += 1
         applied_revision = max(0, int(data.get("applied_revision", 0)))
+        automatic_ota_enabled = bool(
+            data.get(
+                "automatic_ota_enabled",
+                stored_desired.get("auto_ota", False)
+                if isinstance(stored_desired, Mapping)
+                else False,
+            )
+        )
         return cls(
             device_id=format_device_id(str(data["device_id"])),
             secret=str(data["secret"]),
@@ -131,6 +169,15 @@ class DeviceRecord:
                 if isinstance(data.get("last_entity_data"), Mapping)
                 else {}
             ),
+            automatic_ota_enabled=automatic_ota_enabled,
+            ota_check_time=normalize_ota_check_time(
+                data.get("ota_check_time", DEFAULT_OTA_CHECK_TIME)
+            ),
+            last_automatic_ota_date=(
+                str(data["last_automatic_ota_date"])
+                if data.get("last_automatic_ota_date")
+                else None
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -152,6 +199,9 @@ class DeviceRecord:
             "next_wake_at": self.next_wake_at,
             "last_planned_interval_seconds": self.last_planned_interval_seconds,
             "last_entity_data": self.last_entity_data,
+            "automatic_ota_enabled": self.automatic_ota_enabled,
+            "ota_check_time": self.ota_check_time,
+            "last_automatic_ota_date": self.last_automatic_ota_date,
         }
 
     @property
@@ -170,6 +220,123 @@ class DeviceRecord:
         if delivered <= self.delivered_revision:
             return False
         self.delivered_revision = delivered
+        return True
+
+    @property
+    def manual_ota_requested(self) -> bool:
+        """Return whether a manual OTA command still waits for first delivery."""
+        return any(
+            item.get("type") == OTA_COMMAND_TYPE
+            and item.get("source") == OTA_COMMAND_SOURCE_MANUAL
+            and not bool(item.get("delivered", False))
+            for item in self.pending_commands
+        )
+
+    def enqueue_ota_command(
+        self,
+        command_id: str,
+        source: str,
+        *,
+        automatic_date: str | None = None,
+    ) -> bool:
+        """Append one durable OTA command unless its ID already exists."""
+        if source not in {OTA_COMMAND_SOURCE_MANUAL, OTA_COMMAND_SOURCE_AUTOMATIC}:
+            raise ValueError("Unsupported OTA command source")
+        if any(str(item.get("id", "")) == command_id for item in self.pending_commands):
+            return False
+        command: dict[str, Any] = {
+            "id": command_id,
+            "type": OTA_COMMAND_TYPE,
+            "source": source,
+            "delivered": False,
+        }
+        if automatic_date is not None:
+            command["automatic_date"] = automatic_date
+        self.pending_commands.append(command)
+        return True
+
+    def cancel_undelivered_manual_ota(self) -> bool:
+        """Cancel only manual OTA commands that have never been delivered."""
+        retained = [
+            item
+            for item in self.pending_commands
+            if not (
+                item.get("type") == OTA_COMMAND_TYPE
+                and item.get("source") == OTA_COMMAND_SOURCE_MANUAL
+                and not bool(item.get("delivered", False))
+            )
+        ]
+        if len(retained) == len(self.pending_commands):
+            return False
+        self.pending_commands = retained
+        return True
+
+    def mark_commands_delivered(self, command_ids: set[str]) -> bool:
+        """Mark commands included in a successfully prepared signed response."""
+        changed = False
+        for item in self.pending_commands:
+            if str(item.get("id", "")) in command_ids and not bool(
+                item.get("delivered", False)
+            ):
+                item["delivered"] = True
+                changed = True
+        return changed
+
+    def acknowledge_commands(self, command_ids: set[str]) -> bool:
+        """Remove commands explicitly acknowledged by firmware."""
+        retained = [
+            item
+            for item in self.pending_commands
+            if str(item.get("id", "")) not in command_ids
+        ]
+        if len(retained) == len(self.pending_commands):
+            return False
+        self.pending_commands = retained
+        return True
+
+    def commands_for_delivery(self) -> list[dict[str, str]]:
+        """Return only the public signed command schema."""
+        return [
+            {"id": str(item["id"]), "type": str(item["type"])}
+            for item in self.pending_commands
+            if item.get("id") and item.get("type")
+        ]
+
+    def update_ota_settings(self, enabled: bool, check_time: Any) -> bool:
+        """Update Hub-owned daily OTA scheduling settings."""
+        normalized_time = normalize_ota_check_time(check_time)
+        if (
+            self.automatic_ota_enabled == enabled
+            and self.ota_check_time == normalized_time
+        ):
+            return False
+        self.automatic_ota_enabled = enabled
+        self.ota_check_time = normalized_time
+        return True
+
+    def schedule_automatic_ota(self, local_now: datetime, command_id: str) -> bool:
+        """Enqueue at most one automatic OTA command for a local calendar day."""
+        if not self.automatic_ota_enabled or local_now.tzinfo is None:
+            return False
+        scheduled = time.fromisoformat(self.ota_check_time)
+        today = local_now.date().isoformat()
+        if local_now.time().replace(tzinfo=None) < scheduled:
+            return False
+        if self.last_automatic_ota_date == today:
+            return False
+        has_outstanding = any(
+            item.get("type") == OTA_COMMAND_TYPE
+            and item.get("source") == OTA_COMMAND_SOURCE_AUTOMATIC
+            for item in self.pending_commands
+        )
+        if has_outstanding:
+            return False
+        self.enqueue_ota_command(
+            command_id,
+            OTA_COMMAND_SOURCE_AUTOMATIC,
+            automatic_date=today,
+        )
+        self.last_automatic_ota_date = today
         return True
 
     def update_desired(self, changes: Mapping[str, Any]) -> bool:
@@ -235,6 +402,34 @@ def validate_checkin_payload(payload: Mapping[str, Any], device_id: str) -> None
     telemetry = payload.get("telemetry", {})
     if not isinstance(telemetry, Mapping):
         raise ProtocolError("invalid_payload", "Telemetry must be an object")
+    ota_status = telemetry.get("last_ota_status")
+    if ota_status is not None and ota_status not in OTA_STATUS_VALUES:
+        raise ProtocolError("invalid_payload", "Invalid OTA status")
+    last_ota_check = telemetry.get("last_ota_check")
+    if last_ota_check is not None:
+        if not isinstance(last_ota_check, str):
+            raise ProtocolError("invalid_payload", "Invalid OTA check timestamp")
+        try:
+            parsed_ota_check = datetime.fromisoformat(
+                last_ota_check.replace("Z", "+00:00")
+            )
+        except ValueError as err:
+            raise ProtocolError(
+                "invalid_payload", "Invalid OTA check timestamp"
+            ) from err
+        if parsed_ota_check.tzinfo is None:
+            raise ProtocolError("invalid_payload", "OTA timestamp must be aware")
+    available_version = telemetry.get("available_firmware_version")
+    if available_version is not None and (
+        not isinstance(available_version, str) or len(available_version) > 64
+    ):
+        raise ProtocolError("invalid_payload", "Invalid available firmware version")
+    acknowledgements = payload.get("command_acknowledgements", [])
+    if not isinstance(acknowledgements, list) or any(
+        not isinstance(item, str) or not item or len(item) > 128
+        for item in acknowledgements
+    ):
+        raise ProtocolError("invalid_payload", "Invalid command acknowledgements")
 
 
 def normalize_state(

@@ -53,6 +53,7 @@
             "extra_humidity": "Additional humidity entity",
             "show_battery_voltage": "Show battery voltage",
             "auto_ota": "Automatic OTA updates",
+            "ota_check_time": "Daily OTA check time",
             "partial_refreshes_between_full": "Partial refreshes between full refreshes",
             "wake_interval_00": "00:00–00:59 wake interval (minutes)",
             "wake_interval_01": "01:00–01:59 wake interval (minutes)",
@@ -129,6 +130,16 @@
       "active_runtime": {"name": "Last active runtime"},
       "rssi": {"name": "RSSI"},
       "firmware_version": {"name": "Firmware version"},
+      "last_ota_check": {"name": "Last OTA check"},
+      "last_ota_status": {
+        "name": "Last OTA check status",
+        "state": {
+          "current": "Current",
+          "updated": "Updated",
+          "failed": "Failed"
+        }
+      },
+      "available_firmware_version": {"name": "Available firmware version"},
       "board_temperature": {"name": "Board temperature"},
       "board_humidity": {"name": "Board humidity"}
     },
@@ -139,7 +150,11 @@
     },
     "switch": {
       "show_battery_voltage": {"name": "Show battery voltage"},
-      "auto_ota": {"name": "Automatic OTA updates"}
+      "auto_ota": {"name": "Automatic OTA"},
+      "ota_next_wake": {"name": "OTA on next wake"}
+    },
+    "time": {
+      "ota_check_time": {"name": "Daily OTA check time"}
     }
   }
 }
