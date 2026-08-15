@@ -22,6 +22,14 @@ test = [
 include = ["custom_components*"]
 namespaces = true
 
+[tool.setuptools.package-data]
+"custom_components.coolajz_epaper_display_hub" = [
+  "brand/*.png",
+  "brand/*.svg",
+  "manifest.json",
+  "translations/*.json"
+]
+
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
