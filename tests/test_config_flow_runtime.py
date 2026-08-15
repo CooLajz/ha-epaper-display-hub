@@ -71,6 +71,9 @@ def test_measurements_use_semantic_display_precision() -> None:
     )
     assert precision["battery"] == 0
     assert precision["battery_voltage"] == 2
+    assert precision["last_planned_interval"] == 0
+    assert precision["active_runtime"] == 0
+    assert precision["rssi"] == 0
     assert precision["board_temperature"] == 1
     assert precision["board_humidity"] == 0
 
