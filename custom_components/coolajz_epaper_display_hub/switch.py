@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -12,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import HubConfigEntry
 from .const import (
@@ -97,7 +99,15 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
         record = self.entry.runtime_data.store.devices[self.device_id]
         changed = False
         if self.entity_description.mode == "automatic_ota":
+            was_enabled = record.automatic_ota_enabled
             changed = record.update_ota_settings(value, record.ota_check_time)
+            if value and not was_enabled:
+                timezone = (
+                    dt_util.get_time_zone(self.hass.config.time_zone) or UTC
+                )
+                changed |= record.defer_automatic_ota_until_next_day(
+                    datetime.now(UTC).astimezone(timezone)
+                )
         elif self.entity_description.mode == "manual_ota":
             if value and not record.manual_ota_requested:
                 changed = record.enqueue_ota_command(
@@ -125,8 +135,6 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
         if changed:
             await self.entry.runtime_data.store.async_save()
             self.entry.runtime_data.coordinator.async_update_listeners()
-        if self.entity_description.mode == "automatic_ota" and value:
-            await self.entry.runtime_data.coordinator.async_schedule_automatic_ota()
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: object) -> None:

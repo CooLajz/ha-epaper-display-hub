@@ -84,6 +84,16 @@ def optional_number(value: Any) -> float | None:
     return number
 
 
+def retain_active_runtime(
+    current: Mapping[str, Any], previous: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Retain the last timer-wake runtime when a check-in has no new sample."""
+    merged = dict(current)
+    if "active_runtime_ms" not in merged and "active_runtime_ms" in previous:
+        merged["active_runtime_ms"] = previous["active_runtime_ms"]
+    return merged
+
+
 def normalize_ota_check_time(value: Any) -> str:
     """Return one local wall-clock time with second precision."""
     try:
@@ -346,6 +356,16 @@ class DeviceRecord:
             return False
         self.automatic_ota_enabled = enabled
         self.ota_check_time = normalized_time
+        return True
+
+    def defer_automatic_ota_until_next_day(self, local_now: datetime) -> bool:
+        """Prevent a newly enabled automatic OTA schedule from running today."""
+        if not self.automatic_ota_enabled or local_now.tzinfo is None:
+            return False
+        today = local_now.date().isoformat()
+        if self.last_automatic_ota_date == today:
+            return False
+        self.last_automatic_ota_date = today
         return True
 
     def update_show_weather(self, enabled: bool) -> bool:

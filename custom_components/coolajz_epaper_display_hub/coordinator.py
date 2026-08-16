@@ -16,7 +16,12 @@ from .const import (
     AVAILABILITY_TOLERANCE,
     PROTOCOL_VERSION,
 )
-from .models import DeviceRecord, normalize_content, optional_number
+from .models import (
+    DeviceRecord,
+    normalize_content,
+    optional_number,
+    retain_active_runtime,
+)
 from .scheduling import next_wake
 from .security import generate_nonce
 from .store import HubStore
@@ -163,7 +168,11 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         record.last_contact_at = now.isoformat()
         record.next_wake_at = planned_wake.isoformat()
         record.last_planned_interval_seconds = sleep_seconds
-        record.last_entity_data = self._entity_data_for_storage(telemetry, payload)
+        entity_data = retain_active_runtime(
+            self._entity_data_for_storage(telemetry, payload),
+            record.last_entity_data,
+        )
+        record.last_entity_data = entity_data
         acknowledgements = {
             str(item) for item in payload.get("command_acknowledgements", [])
         }
@@ -172,8 +181,9 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             now.astimezone(timezone),
             generate_nonce(),
         )
+        entity_telemetry = retain_active_runtime(telemetry, entity_data)
         device_data = {
-            **telemetry,
+            **entity_telemetry,
             "last_contact": now,
             "firmware_version": payload.get("firmware_version"),
             "model": payload.get("model"),

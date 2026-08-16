@@ -12,6 +12,7 @@ from custom_components.coolajz_epaper_display_hub.models import (
     normalize_content,
     normalize_partial_refreshes,
     normalize_state,
+    retain_active_runtime,
     validate_checkin_payload,
 )
 from custom_components.coolajz_epaper_display_hub.security import generate_secret
@@ -54,6 +55,18 @@ def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
         normalize_partial_refreshes(51)
     with pytest.raises(ProtocolError, match="must be whole"):
         normalize_partial_refreshes(1.5)
+
+
+def test_missing_active_runtime_retains_last_timer_wake_sample() -> None:
+    previous = {"active_runtime_ms": 4200, "battery_percent": 80}
+
+    assert retain_active_runtime({"battery_percent": 79}, previous) == {
+        "active_runtime_ms": 4200,
+        "battery_percent": 79,
+    }
+    assert retain_active_runtime(
+        {"active_runtime_ms": 3600}, previous
+    ) == {"active_runtime_ms": 3600}
 
 
 def test_checkin_ip_address_must_be_valid_ipv4() -> None:

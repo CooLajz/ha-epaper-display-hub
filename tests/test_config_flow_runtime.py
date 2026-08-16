@@ -292,6 +292,7 @@ async def test_pair_remove_unload_and_reload(
                 "partial_refresh_count": 4,
                 "ip_address": "192.168.1.123",
                 "wifi_bssid": "11:22:33:44:55:66",
+                "active_runtime_ms": 4200,
             },
             "firmware_version": "1.0.0",
         },
@@ -306,11 +307,25 @@ async def test_pair_remove_unload_and_reload(
     assert record.last_entity_data["partial_refresh_count"] == 4
     assert record.last_entity_data["ip_address"] == "192.168.1.123"
     assert record.last_entity_data["wifi_bssid"] == "11:22:33:44:55:66"
+    assert record.last_entity_data["active_runtime_ms"] == 4200
     assert (
         entry.runtime_data.coordinator.device_data(record.device_id)[
             "partial_refresh_count"
         ]
         == 4
+    )
+
+    await entry.runtime_data.coordinator.async_process_checkin(
+        record,
+        {"telemetry": {"battery_percent": 79}, "firmware_version": "1.0.0"},
+        {},
+    )
+    assert record.last_entity_data["active_runtime_ms"] == 4200
+    assert (
+        entry.runtime_data.coordinator.device_data(record.device_id)[
+            "active_runtime_ms"
+        ]
+        == 4200
     )
 
     subentry_id = next(iter(entry.subentries))

@@ -83,6 +83,8 @@ OTA is also orchestrated exclusively by the Hub. Each display exposes an
 **Automatic OTA** switch and an independent **OTA on next wake** switch. When
 automatic OTA is enabled, the display configuration form also shows its daily OTA
 check time. The time is evaluated in Home Assistant's timezone.
+Enabling automatic OTA skips the current local day, so the first automatic command
+is eligible only on the next day at the configured time.
 Both automatic and manual requests create the same durable `ota_check` command, which
 is repeated until firmware acknowledges its ID. Once enabled, the manual switch cannot
 be cancelled and turns off only after that acknowledgement. Firmware

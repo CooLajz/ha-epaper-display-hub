@@ -338,6 +338,12 @@ response_signature = b9e56fb4276c61ab2f737b8ba3b00e1ed4860c43ea8cc015cb70eb81012
 }
 ```
 
+`active_runtime_ms` is optional. Firmware includes it only for a completed cycle whose
+boot cause was the deep-sleep timer. Power-on, manual/USB reset, pairing, OTA restart,
+and the restart used by `wifi_full_scan` do not produce a runtime sample. When the
+field is absent, the Hub retains the last valid timer-wake value so the diagnostic
+sensor does not create a service-cycle spike or temporarily become unavailable.
+
 Optional telemetry keys may be omitted. `null` is not a valid measurement. Board
 temperature and humidity are accepted only when `environment_sensor_present` is
 true and the corresponding value is finite; the board model never implies a sensor.
@@ -556,6 +562,20 @@ ISO 8601 timestamp and `last_ota_status` as `current`, `updated`, or `failed`.
 determine it. The installed version continues to use the top-level `firmware_version`.
 These diagnostic values describe the last completed attempt; they do not replace the
 durable command acknowledgement.
+
+Independently of Hub OTA switches and commands, firmware performs one metadata-only
+version lookup after the first authenticated check-in of each new local calendar day.
+The local date is taken from the signed timezone-aware `server_time`; firmware does not
+maintain its own timezone rules. The attempt date is persisted before the lookup, so a
+failed lookup is not retried until the next local day. A successful lookup stores the
+server metadata version in `available_firmware_version` without installing it. A failed
+lookup stores the literal diagnostic value `Chyba kontroly`. After a successful
+commanded installation, firmware immediately replaces this value with the installed
+version so stale availability is not reported until the next daily lookup.
+
+Enabling automatic OTA marks the current Home Assistant local day as already evaluated.
+The Hub may create the first automatic `ota_check` command only on the following day at
+or after the configured OTA time. A manual next-wake request remains independent.
 
 `auto_ota` is not a firmware desired-configuration key. The Hub translates both the
 manual switch and daily schedule into the same signed `ota_check` command contract.

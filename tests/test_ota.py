@@ -102,6 +102,25 @@ def test_next_daily_command_waits_for_previous_automatic_ack() -> None:
     assert record.commands_for_delivery() == [{"id": "auto-2", "type": "ota_check"}]
 
 
+def test_newly_enabled_automatic_ota_starts_on_the_next_day() -> None:
+    record = _record()
+    record.update_ota_settings(True, "03:00:00")
+    prague = ZoneInfo("Europe/Prague")
+
+    assert record.defer_automatic_ota_until_next_day(
+        datetime(2026, 8, 15, 18, 0, tzinfo=prague)
+    )
+    assert not record.schedule_automatic_ota(
+        datetime(2026, 8, 15, 18, 1, tzinfo=prague), "auto-today"
+    )
+    assert not record.schedule_automatic_ota(
+        datetime(2026, 8, 16, 2, 59, tzinfo=prague), "auto-too-early"
+    )
+    assert record.schedule_automatic_ota(
+        datetime(2026, 8, 16, 3, 0, tzinfo=prague), "auto-next-day"
+    )
+
+
 def test_home_assistant_timezone_conversion_controls_automatic_ota() -> None:
     record = _record()
     record.update_ota_settings(True, "03:00:00")
