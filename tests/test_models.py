@@ -279,3 +279,14 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     )
     assert not restored.configuration_pending
     assert not restored.configuration_application_pending
+
+
+def test_content_change_advances_revision_and_pending_state() -> None:
+    """Display content uses the same delivered revision contract as config values."""
+    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
+    record.mark_configuration_delivered(record.desired_revision)
+    original_revision = record.desired_revision
+
+    assert record.update_configuration({}, content_changed=True)
+    assert record.desired_revision == original_revision + 1
+    assert record.configuration_pending

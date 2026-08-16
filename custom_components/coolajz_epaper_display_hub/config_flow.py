@@ -395,11 +395,16 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         if record is None:
             return self.async_abort(reason="unknown_device")
         if user_input is not None:
+            content = _content_from_input(user_input)
+            stored_content = subentry.data.get(CONF_CONTENT, {})
+            content_changed = content != stored_content
             wake_schedule = {
                 str(hour): int(user_input[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"])
                 for hour in range(24)
             }
-            configuration_changed = record.update_configuration({}, wake_schedule)
+            configuration_changed = record.update_configuration(
+                {}, wake_schedule, content_changed=content_changed
+            )
             ota_settings_changed = record.update_ota_settings(
                 record.automatic_ota_enabled,
                 user_input.get(OTA_CHECK_TIME, record.ota_check_time),
@@ -410,7 +415,7 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
             if record.automatic_ota_enabled:
                 await self._runtime.coordinator.async_schedule_automatic_ota()
             data = dict(subentry.data)
-            data[CONF_CONTENT] = _content_from_input(user_input)
+            data[CONF_CONTENT] = content
             return self.async_update_and_abort(
                 entry,
                 subentry,

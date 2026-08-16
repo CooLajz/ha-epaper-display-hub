@@ -131,7 +131,7 @@ def test_device_switches_are_not_in_reconfigure_form() -> None:
 
 def test_partial_refresh_number_has_device_range() -> None:
     assert EpaperPartialRefreshNumber._attr_native_min_value == 0
-    assert EpaperPartialRefreshNumber._attr_native_max_value == 20
+    assert EpaperPartialRefreshNumber._attr_native_max_value == 50
     assert EpaperPartialRefreshNumber._attr_native_step == 1
 
 
@@ -200,13 +200,21 @@ async def test_pair_remove_unload_and_reload(
         )
         pair_request.assert_awaited_once()
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
     assert len(entry.subentries) == 1
     assert "AA:BB:CC:DD:EE:FF" in entry.runtime_data.store.devices
     subentry = next(iter(entry.subentries.values()))
     assert subentry.data[CONF_TRANSPORT_SECURITY] == TRANSPORT_HTTPS_VERIFIED
     assert CONF_PAIRING_PIN not in subentry.data
 
-    record = entry.runtime_data.store.devices["AA:BB:CC:DD:EE:FF"]
+    runtime = entry.runtime_data
+    record = runtime.store.devices["AA:BB:CC:DD:EE:FF"]
+    await runtime.coordinator.async_process_checkin(
+        record,
+        {"telemetry": {"battery_percent": 80}, "firmware_version": "1.0.0"},
+        {},
+    )
+    assert runtime.coordinator.is_device_available(record.device_id)
     original_revision = record.desired_revision
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
@@ -220,7 +228,29 @@ async def test_pair_remove_unload_and_reload(
     )
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done()
+    assert entry.runtime_data is runtime
+    assert runtime.coordinator.is_device_available(record.device_id)
     assert record.desired_revision == original_revision
+
+    content_input = _reconfigure_input()
+    content_input["main_entity"] = "sensor.room_temperature"
+    content_input["main_type"] = "temperature"
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], content_input
+    )
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    await hass.async_block_till_done()
+    assert entry.runtime_data is runtime
+    assert record.desired_revision == original_revision + 1
+    assert record.configuration_pending
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
@@ -237,7 +267,7 @@ async def test_pair_remove_unload_and_reload(
     assert record.desired[DESIRED_SHOW_BATTERY_VOLTAGE] is True
     assert record.desired[DESIRED_PARTIAL_REFRESHES] == 10
     assert record.wake_schedule["0"] == 15
-    assert record.desired_revision == original_revision + 1
+    assert record.desired_revision == original_revision + 2
 
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,

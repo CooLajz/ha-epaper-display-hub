@@ -372,6 +372,8 @@ class DeviceRecord:
         self,
         changes: Mapping[str, Any],
         wake_schedule: Mapping[str, Any] | None = None,
+        *,
+        content_changed: bool = False,
     ) -> bool:
         """Update device configuration and hub-only planning in one revision."""
         normalized_changes = dict(changes)
@@ -387,7 +389,11 @@ class DeviceRecord:
             if wake_schedule is not None
             else self.wake_schedule
         )
-        if updated_desired == self.desired and updated_schedule == self.wake_schedule:
+        if (
+            updated_desired == self.desired
+            and updated_schedule == self.wake_schedule
+            and not content_changed
+        ):
             return False
         self.desired = updated_desired
         self.wake_schedule = updated_schedule

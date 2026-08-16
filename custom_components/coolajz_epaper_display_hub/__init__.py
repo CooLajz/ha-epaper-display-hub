@@ -38,6 +38,7 @@ class HubRuntime:
     store: HubStore
     coordinator: HubCoordinator
     time_sync_limiter: DeviceRateLimiter
+    subentry_ids: frozenset[str]
 
     def content_for(self, device_id: str) -> Mapping[str, Any]:
         """Return content selection for a paired device."""
@@ -81,6 +82,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         store,
         coordinator,
         DeviceRateLimiter(TIME_SYNC_RATE_LIMIT, TIME_SYNC_RATE_WINDOW),
+        frozenset(entry.subentries),
     )
     entry.runtime_data = runtime
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
@@ -111,7 +113,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: HubConfigEntry) -> None:
-    """Reload after a display is added, reconfigured, or removed."""
+    """Reload only when display entity topology changes."""
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if runtime is not None and frozenset(entry.subentries) == runtime.subentry_ids:
+        runtime.coordinator.async_update_listeners()
+        return
     await hass.config_entries.async_reload(entry.entry_id)
 
 
