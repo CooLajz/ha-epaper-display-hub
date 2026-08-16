@@ -562,7 +562,7 @@ def normalize_state(
     valid = raw_state not in ("unknown", "unavailable", None)
     if is_text:
         display_value = str(raw_state) if valid else None
-        valid = bool(display_value) and _valid_utf8_display_text(
+        valid = display_value is not None and _valid_utf8_display_text(
             display_value, MAX_DISPLAY_VALUE_BYTES
         )
         if not valid:
