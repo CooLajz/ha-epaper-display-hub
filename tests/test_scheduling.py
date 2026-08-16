@@ -42,14 +42,67 @@ def test_exact_boundary_is_strictly_future() -> None:
     assert sleep_seconds == 900
 
 
+def test_checkin_in_second_half_serves_the_upcoming_boundary() -> None:
+    """An early wake late in the cycle skips the nearly reached boundary."""
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 0, 45, tzinfo=PRAGUE), PRAGUE, _schedule()
+    )
+
+    assert planned.isoformat() == "2026-08-15T02:00:00+02:00"
+    assert sleep_seconds == 75 * 60
+
+
+def test_ten_minute_cycle_waking_after_eight_minutes_sleeps_twelve() -> None:
+    """The half-interval rule applies equally to shorter configured intervals."""
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 0, 8, tzinfo=PRAGUE), PRAGUE, _schedule(10)
+    )
+
+    assert planned.isoformat() == "2026-08-15T00:20:00+02:00"
+    assert sleep_seconds == 12 * 60
+
+
+def test_checkin_in_first_half_keeps_the_upcoming_boundary() -> None:
+    """A genuinely early unscheduled wake still targets the current boundary."""
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 0, 20, tzinfo=PRAGUE), PRAGUE, _schedule()
+    )
+
+    assert planned.isoformat() == "2026-08-15T01:00:00+02:00"
+    assert sleep_seconds == 40 * 60
+
+
+def test_seconds_before_boundary_do_not_trigger_an_immediate_second_refresh() -> None:
+    """Clock drift just before a boundary advances to the following interval."""
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 0, 59, 40, tzinfo=PRAGUE), PRAGUE, _schedule()
+    )
+
+    assert planned.isoformat() == "2026-08-15T02:00:00+02:00"
+    assert sleep_seconds == 60 * 60 + 20
+
+
+def test_half_interval_uses_real_gap_across_schedule_transition() -> None:
+    """The threshold follows the interval ending at a boundary, not the next hour."""
+    schedule = _schedule()
+    schedule["23"] = 15
+
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 22, 45, tzinfo=PRAGUE), PRAGUE, schedule
+    )
+
+    assert planned.isoformat() == "2026-08-15T23:15:00+02:00"
+    assert sleep_seconds == 30 * 60
+
+
 def test_daylight_saving_gap_uses_real_timeline() -> None:
     """The nonexistent spring hour is skipped by timezone conversion."""
     planned, sleep_seconds = next_wake(
         datetime(2026, 3, 29, 1, 59, 30, tzinfo=PRAGUE), PRAGUE, _schedule()
     )
 
-    assert planned.isoformat() == "2026-03-29T03:00:00+02:00"
-    assert sleep_seconds == 30
+    assert planned.isoformat() == "2026-03-29T04:00:00+02:00"
+    assert sleep_seconds == 60 * 60 + 30
 
 
 def test_daylight_saving_fold_can_schedule_repeated_hour() -> None:
@@ -60,8 +113,8 @@ def test_daylight_saving_fold_can_schedule_repeated_hour() -> None:
         _schedule(),
     )
 
-    assert planned.isoformat() == "2026-10-25T02:00:00+01:00"
-    assert sleep_seconds == 600
+    assert planned.isoformat() == "2026-10-25T03:00:00+01:00"
+    assert sleep_seconds == 70 * 60
 
 
 def test_earlier_one_time_override_wins() -> None:

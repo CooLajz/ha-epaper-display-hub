@@ -444,10 +444,19 @@ vector and therefore requires a coordinated protocol update.
 
 Home Assistant is the only source of truth for wake scheduling. Each display has a
 24-hour local schedule whose values are constrained to 5, 10, 15, 20, 30, or 60
-minutes. The hub searches for the nearest strictly future valid boundary; it does not
-add the interval belonging to the current hour. For example, a check-in at 22:17 with
-a 60-minute interval for hour 22 and a 15-minute interval for hour 23 returns 23:00,
-followed by 23:15, 23:30, and 23:45.
+minutes. The Hub evaluates boundaries on the real UTC timeline and uses the interval
+between the previous and upcoming valid boundaries as the current cycle. A check-in
+in the first half of that cycle keeps the upcoming boundary. A check-in at or after
+the halfway point treats that boundary as already served and advances to the following
+valid boundary. This prevents clock drift from causing another display refresh a few
+seconds later. For example, a ten-minute cycle checking in after eight minutes sleeps
+another twelve minutes, and a sixty-minute cycle checking in after forty-five minutes
+sleeps another seventy-five minutes when the following cycle is also sixty minutes.
+
+The Hub still searches across hour transitions instead of merely adding the interval
+configured for the current hour. A check-in at 22:17 with a 60-minute interval for
+hour 22 and a 15-minute interval for hour 23 returns 23:00, followed by 23:15, 23:30,
+and 23:45.
 
 `server_time` and `next_wake_at` are timezone-aware ISO 8601 values in the Home
 Assistant timezone. `sleep_seconds` is authoritative and is measured from response

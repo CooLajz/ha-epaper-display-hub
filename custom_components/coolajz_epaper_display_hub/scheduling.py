@@ -37,20 +37,33 @@ def next_wake(
     *,
     earlier_override: datetime | None = None,
 ) -> tuple[datetime, int]:
-    """Find the nearest future boundary on the real UTC timeline."""
+    """Find the next boundary, treating a late-cycle check-in as already served."""
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     now_utc = now.astimezone(UTC).replace(microsecond=0)
     normalized = normalize_wake_schedule(schedule)
-    candidate_utc = now_utc.replace(second=0) + timedelta(minutes=1)
+    minute_floor_utc = now_utc.replace(second=0)
+    previous_boundary_utc: datetime | None = None
+    for _ in range(_MAX_SEARCH_MINUTES):
+        local_candidate = minute_floor_utc.astimezone(timezone)
+        if _is_boundary(local_candidate, normalized):
+            previous_boundary_utc = minute_floor_utc
+            break
+        minute_floor_utc -= timedelta(minutes=1)
+    if previous_boundary_utc is None:
+        raise ValueError("wake schedule has no future boundary")
 
     scheduled: datetime | None = None
+    candidate_utc = now_utc.replace(second=0) + timedelta(minutes=1)
     for _ in range(_MAX_SEARCH_MINUTES):
         local_candidate = candidate_utc.astimezone(timezone)
-        interval = normalized[str(local_candidate.hour)]
-        if local_candidate.minute % interval == 0:
-            scheduled = local_candidate
-            break
+        if _is_boundary(local_candidate, normalized):
+            boundary_interval = candidate_utc - previous_boundary_utc
+            remaining = candidate_utc - now_utc
+            if remaining > boundary_interval / 2:
+                scheduled = local_candidate
+                break
+            previous_boundary_utc = candidate_utc
         candidate_utc += timedelta(minutes=1)
     if scheduled is None:
         raise ValueError("wake schedule has no future boundary")
@@ -64,3 +77,9 @@ def next_wake(
 
     sleep_seconds = int((scheduled.astimezone(UTC) - now_utc).total_seconds())
     return scheduled, sleep_seconds
+
+
+def _is_boundary(candidate: datetime, schedule: Mapping[str, int]) -> bool:
+    """Return whether one local minute is a configured wake boundary."""
+    interval = schedule[str(candidate.hour)]
+    return candidate.minute % interval == 0
