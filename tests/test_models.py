@@ -36,9 +36,9 @@ class FakeHass:
 
 def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
     assert normalize_partial_refreshes(0) == 0
-    assert normalize_partial_refreshes(20) == 20
-    with pytest.raises(ProtocolError, match="outside 0 to 20"):
-        normalize_partial_refreshes(21)
+    assert normalize_partial_refreshes(50) == 50
+    with pytest.raises(ProtocolError, match="outside 0 to 50"):
+        normalize_partial_refreshes(51)
     with pytest.raises(ProtocolError, match="must be whole"):
         normalize_partial_refreshes(1.5)
 

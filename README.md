@@ -95,7 +95,7 @@ and the available firmware version when the display can determine it. The instal
 version remains available separately as **Firmware version**.
 
 The device also exposes **Partial refreshes between full refreshes** as a number
-entity with a whole-number range of 0 to 20. Like the battery-voltage switch, this is
+entity with a whole-number range of 0 to 50. Like the battery-voltage switch, this is
 device configuration and is not duplicated in the display configuration form.
 
 The latest known entity values are persisted and restored after a Home Assistant

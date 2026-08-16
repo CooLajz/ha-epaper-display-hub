@@ -107,7 +107,9 @@ def normalize_partial_refreshes(value: Any) -> int:
     result = int(numeric)
     if not MIN_PARTIAL_REFRESHES <= result <= MAX_PARTIAL_REFRESHES:
         raise ProtocolError(
-            "invalid_partial_refreshes", "Refresh count is outside 0 to 20"
+            "invalid_partial_refreshes",
+            f"Refresh count is outside {MIN_PARTIAL_REFRESHES} to "
+            f"{MAX_PARTIAL_REFRESHES}",
         )
     return result
 
