@@ -11,6 +11,7 @@ from custom_components.coolajz_epaper_display_hub.models import (
     normalize_content,
     normalize_partial_refreshes,
     normalize_state,
+    validate_checkin_payload,
 )
 from custom_components.coolajz_epaper_display_hub.security import generate_secret
 
@@ -41,6 +42,22 @@ def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
         normalize_partial_refreshes(51)
     with pytest.raises(ProtocolError, match="must be whole"):
         normalize_partial_refreshes(1.5)
+
+
+def test_checkin_ip_address_must_be_valid_ipv4() -> None:
+    payload = {
+        "protocol_version": 1,
+        "device_id": "AA:BB:CC:DD:EE:FF",
+        "model": "ESPink",
+        "hardware_variant": "ESP32-S3",
+        "firmware_version": "1.0.0",
+        "telemetry": {"ip_address": "192.168.1.123"},
+    }
+    validate_checkin_payload(payload, "AA:BB:CC:DD:EE:FF")
+
+    payload["telemetry"]["ip_address"] = "192.168.1.999"
+    with pytest.raises(ProtocolError, match="IP address"):
+        validate_checkin_payload(payload, "AA:BB:CC:DD:EE:FF")
 
 
 def test_revoked_record_retains_only_unpair_credentials_and_command() -> None:

@@ -127,6 +127,7 @@
       "active_runtime": {"name": "Poslední aktivní doba"},
       "partial_refresh_count": {"name": "Počet partial refreshů"},
       "rssi": {"name": "RSSI"},
+      "ip_address": {"name": "IP adresa"},
       "firmware_version": {"name": "Verze firmwaru"},
       "last_ota_check": {"name": "Poslední OTA kontrola"},
       "last_ota_status": {

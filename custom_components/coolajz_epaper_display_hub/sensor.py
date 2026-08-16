@@ -104,6 +104,11 @@ SENSORS = (
         suggested_display_precision=0,
     ),
     EpaperSensorDescription(
+        key="ip_address",
+        telemetry_key="ip_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
         key="firmware_version",
         telemetry_key="firmware_version",
         entity_category=EntityCategory.DIAGNOSTIC,

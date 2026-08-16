@@ -271,7 +271,13 @@ async def test_pair_remove_unload_and_reload(
 
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,
-        {"telemetry": {"partial_refresh_count": 4}, "firmware_version": "1.0.0"},
+        {
+            "telemetry": {
+                "partial_refresh_count": 4,
+                "ip_address": "192.168.1.123",
+            },
+            "firmware_version": "1.0.0",
+        },
         {},
     )
     assert response["revision"] == record.desired_revision
@@ -281,6 +287,7 @@ async def test_pair_remove_unload_and_reload(
     assert datetime.fromisoformat(response["next_wake_at"]).tzinfo is not None
     assert entry.runtime_data.coordinator.is_device_available(record.device_id)
     assert record.last_entity_data["partial_refresh_count"] == 4
+    assert record.last_entity_data["ip_address"] == "192.168.1.123"
     assert (
         entry.runtime_data.coordinator.device_data(record.device_id)[
             "partial_refresh_count"

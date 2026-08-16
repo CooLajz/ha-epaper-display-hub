@@ -321,6 +321,7 @@ response_signature = b9e56fb4276c61ab2f737b8ba3b00e1ed4860c43ea8cc015cb70eb81012
     "battery_percent": 81,
     "battery_voltage": 3.91,
     "rssi": -63,
+    "ip_address": "192.168.1.123",
     "active_runtime_ms": 2140,
     "partial_refresh_count": 4,
     "last_refresh": "2026-08-15T08:00:02Z",

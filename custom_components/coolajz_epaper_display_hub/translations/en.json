@@ -127,6 +127,7 @@
       "active_runtime": {"name": "Last active runtime"},
       "partial_refresh_count": {"name": "Partial refresh count"},
       "rssi": {"name": "RSSI"},
+      "ip_address": {"name": "IP address"},
       "firmware_version": {"name": "Firmware version"},
       "last_ota_check": {"name": "Last OTA check"},
       "last_ota_status": {

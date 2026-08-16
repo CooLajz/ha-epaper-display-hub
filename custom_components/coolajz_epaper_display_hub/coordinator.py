@@ -33,6 +33,7 @@ _PERSISTED_NUMERIC_TELEMETRY = {
     "board_humidity",
 }
 _PERSISTED_TEXT_TELEMETRY = {
+    "ip_address",
     "last_ota_status",
     "available_firmware_version",
 }

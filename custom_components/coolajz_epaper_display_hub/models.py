@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
+from ipaddress import AddressValueError, IPv4Address
 from typing import Any
 
 from .const import (
@@ -489,6 +490,14 @@ def validate_checkin_payload(payload: Mapping[str, Any], device_id: str) -> None
     telemetry = payload.get("telemetry", {})
     if not isinstance(telemetry, Mapping):
         raise ProtocolError("invalid_payload", "Telemetry must be an object")
+    ip_address = telemetry.get("ip_address")
+    if ip_address is not None:
+        if not isinstance(ip_address, str):
+            raise ProtocolError("invalid_payload", "Invalid IP address")
+        try:
+            IPv4Address(ip_address)
+        except AddressValueError as err:
+            raise ProtocolError("invalid_payload", "Invalid IP address") from err
     ota_status = telemetry.get("last_ota_status")
     if ota_status is not None and ota_status not in OTA_STATUS_VALUES:
         raise ProtocolError("invalid_payload", "Invalid OTA status")
