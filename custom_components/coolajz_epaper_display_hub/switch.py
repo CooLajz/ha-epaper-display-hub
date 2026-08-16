@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -142,21 +142,63 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up desired-state controls per subentry."""
+    typed_entry: HubConfigEntry = entry
+    registry = er.async_get(hass)
+    weather_switches: set[str] = set()
+
+    def _weather_configured(subentry: object) -> bool:
+        data = getattr(subentry, "data", {})
+        content = data.get(CONF_CONTENT, {}) if isinstance(data, Mapping) else {}
+        return isinstance(content, Mapping) and bool(content.get(SLOT_WEATHER))
+
+    def _remove_weather_switch(device_id: str) -> None:
+        entity_id = registry.async_get_entity_id(
+            "switch",
+            DOMAIN,
+            f"{device_id}-{SHOW_WEATHER_DESCRIPTION.key}",
+        )
+        if entity_id is not None:
+            registry.async_remove(entity_id)
+
     for subentry_id, subentry in entry.subentries.items():
         descriptions = list(DESCRIPTIONS)
-        content = subentry.data.get(CONF_CONTENT, {})
-        if isinstance(content, Mapping) and content.get(SLOT_WEATHER):
+        device_id = str(subentry.data[CONF_DEVICE_ID])
+        if _weather_configured(subentry):
             descriptions.append(SHOW_WEATHER_DESCRIPTION)
+            weather_switches.add(device_id)
         else:
-            registry = er.async_get(hass)
-            entity_id = registry.async_get_entity_id(
-                "switch",
-                DOMAIN,
-                f"{subentry.data[CONF_DEVICE_ID]}-{SHOW_WEATHER_DESCRIPTION.key}",
-            )
-            if entity_id is not None:
-                registry.async_remove(entity_id)
+            _remove_weather_switch(device_id)
         async_add_entities(
-            [EpaperConfigSwitch(entry, subentry_id, item) for item in descriptions],
+            [
+                EpaperConfigSwitch(typed_entry, subentry_id, item)
+                for item in descriptions
+            ],
             config_subentry_id=subentry_id,
         )
+
+    @callback
+    def _sync_weather_switches() -> None:
+        for subentry_id, subentry in entry.subentries.items():
+            device_id = str(subentry.data[CONF_DEVICE_ID])
+            configured = _weather_configured(subentry)
+            if configured and device_id not in weather_switches:
+                weather_switches.add(device_id)
+                async_add_entities(
+                    [
+                        EpaperConfigSwitch(
+                            typed_entry,
+                            subentry_id,
+                            SHOW_WEATHER_DESCRIPTION,
+                        )
+                    ],
+                    config_subentry_id=subentry_id,
+                )
+            elif not configured and device_id in weather_switches:
+                weather_switches.remove(device_id)
+                _remove_weather_switch(device_id)
+
+    entry.async_on_unload(
+        typed_entry.runtime_data.coordinator.async_add_listener(
+            _sync_weather_switches
+        )
+    )

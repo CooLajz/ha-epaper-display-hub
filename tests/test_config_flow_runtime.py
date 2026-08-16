@@ -16,6 +16,7 @@ pytest.importorskip("pytest_homeassistant_custom_component")
 
 from homeassistant import config_entries, data_entry_flow  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
+from homeassistant.helpers import entity_registry as er  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
 from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa: E402
@@ -41,6 +42,7 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     OTA_CHECK_TIME,
     PROTOCOL_HEADER,
     SIGNATURE_HEADER,
+    SLOT_WEATHER,
     SUBENTRY_TYPE_DISPLAY,
     TIME_SYNC_PATH,
     TIMESTAMP_HEADER,
@@ -213,6 +215,9 @@ async def test_pair_remove_unload_and_reload(
 
     runtime = entry.runtime_data
     record = runtime.store.devices["AA:BB:CC:DD:EE:FF"]
+    registry = er.async_get(hass)
+    weather_unique_id = f"{record.device_id}-show_weather"
+    assert registry.async_get_entity_id("switch", DOMAIN, weather_unique_id) is None
     await runtime.coordinator.async_process_checkin(
         record,
         {"telemetry": {"battery_percent": 80}, "firmware_version": "1.0.0"},
@@ -240,6 +245,7 @@ async def test_pair_remove_unload_and_reload(
     content_input = _reconfigure_input()
     content_input["main_entity"] = "sensor.room_temperature"
     content_input["main_type"] = "temperature"
+    content_input[SLOT_WEATHER] = "weather.home"
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
         context={
@@ -255,6 +261,11 @@ async def test_pair_remove_unload_and_reload(
     assert entry.runtime_data is runtime
     assert record.desired_revision == original_revision + 1
     assert record.configuration_pending
+    weather_switch_id = registry.async_get_entity_id(
+        "switch", DOMAIN, weather_unique_id
+    )
+    assert weather_switch_id is not None
+    assert hass.states.get(weather_switch_id) is not None
 
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
@@ -272,6 +283,7 @@ async def test_pair_remove_unload_and_reload(
     assert record.desired[DESIRED_PARTIAL_REFRESHES] == 10
     assert record.wake_schedule["0"] == 15
     assert record.desired_revision == original_revision + 2
+    assert registry.async_get_entity_id("switch", DOMAIN, weather_unique_id) is None
 
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,
