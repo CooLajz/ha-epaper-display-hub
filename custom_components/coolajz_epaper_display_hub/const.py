@@ -67,7 +67,14 @@ OTA_STATUS_VALUES = ("current", "updated", "failed")
 WAKE_SCHEDULE_FIELD_PREFIX = "wake_interval_"
 
 DEFAULT_WAKE_SCHEDULE = {
-    str(hour): DEFAULT_REFRESH_INTERVAL_MINUTES for hour in range(24)
+    str(hour): (
+        60
+        if hour < 5 or hour == 23
+        else 15
+        if hour < 8 or hour >= 21
+        else 5
+    )
+    for hour in range(24)
 }
 
 DEFAULT_DESIRED = {

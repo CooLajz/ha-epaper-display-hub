@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from custom_components.coolajz_epaper_display_hub.const import DEFAULT_WAKE_SCHEDULE
 from custom_components.coolajz_epaper_display_hub.models import (
     DeviceRecord,
     ProtocolError,
@@ -33,6 +34,17 @@ class FakeStates:
 class FakeHass:
     def __init__(self, states: dict[str, FakeState]) -> None:
         self.states = FakeStates(states)
+
+
+def test_new_device_default_wake_schedule() -> None:
+    record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
+
+    assert record.wake_schedule == DEFAULT_WAKE_SCHEDULE
+    assert {record.wake_schedule[str(hour)] for hour in range(0, 5)} == {60}
+    assert {record.wake_schedule[str(hour)] for hour in range(5, 8)} == {15}
+    assert {record.wake_schedule[str(hour)] for hour in range(8, 21)} == {5}
+    assert {record.wake_schedule[str(hour)] for hour in range(21, 23)} == {15}
+    assert record.wake_schedule["23"] == 60
 
 
 def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
