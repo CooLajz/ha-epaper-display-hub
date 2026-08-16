@@ -135,7 +135,6 @@ OPTIONAL_SENSORS = {
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=1,
     ),
     "board_humidity": EpaperSensorDescription(
@@ -144,7 +143,6 @@ OPTIONAL_SENSORS = {
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=0,
     ),
 }

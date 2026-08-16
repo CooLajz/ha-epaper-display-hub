@@ -138,8 +138,8 @@
         }
       },
       "available_firmware_version": {"name": "Dostupná verze firmwaru"},
-      "board_temperature": {"name": "Teplota desky"},
-      "board_humidity": {"name": "Vlhkost desky"}
+      "board_temperature": {"name": "Teplota"},
+      "board_humidity": {"name": "Vlhkost"}
     },
     "binary_sensor": {
       "available": {"name": "Dostupný"},

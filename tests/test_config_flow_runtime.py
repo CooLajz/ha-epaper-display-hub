@@ -94,6 +94,8 @@ def test_measurements_use_semantic_display_precision() -> None:
     assert precision["rssi"] == 0
     assert precision["board_temperature"] == 1
     assert precision["board_humidity"] == 0
+    assert OPTIONAL_SENSORS["board_temperature"].entity_category is None
+    assert OPTIONAL_SENSORS["board_humidity"].entity_category is None
 
 
 def test_pending_configuration_is_not_a_problem_device_class() -> None:

@@ -138,8 +138,8 @@
         }
       },
       "available_firmware_version": {"name": "Available firmware version"},
-      "board_temperature": {"name": "Board temperature"},
-      "board_humidity": {"name": "Board humidity"}
+      "board_temperature": {"name": "Temperature"},
+      "board_humidity": {"name": "Humidity"}
     },
     "binary_sensor": {
       "available": {"name": "Available"},
