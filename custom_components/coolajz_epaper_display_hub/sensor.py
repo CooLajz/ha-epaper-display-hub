@@ -61,11 +61,6 @@ SENSORS = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     EpaperSensorDescription(
-        key="last_refresh",
-        telemetry_key="last_refresh",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    EpaperSensorDescription(
         key="next_wake_at",
         telemetry_key="next_wake_at",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -106,6 +101,11 @@ SENSORS = (
     EpaperSensorDescription(
         key="ip_address",
         telemetry_key="ip_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    EpaperSensorDescription(
+        key="wifi_bssid",
+        telemetry_key="wifi_bssid",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     EpaperSensorDescription(

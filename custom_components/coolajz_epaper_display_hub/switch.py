@@ -9,7 +9,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -105,7 +105,7 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
                 )
             elif not value and record.manual_ota_requested:
                 self.async_write_ha_state()
-                raise HomeAssistantError(
+                raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="command_waiting_for_device",
                 )
@@ -114,7 +114,7 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
                 changed = record.enqueue_wifi_full_scan_command(generate_nonce())
             elif not value and record.wifi_full_scan_requested:
                 self.async_write_ha_state()
-                raise HomeAssistantError(
+                raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="command_waiting_for_device",
                 )

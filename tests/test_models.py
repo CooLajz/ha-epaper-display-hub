@@ -60,6 +60,22 @@ def test_checkin_ip_address_must_be_valid_ipv4() -> None:
         validate_checkin_payload(payload, "AA:BB:CC:DD:EE:FF")
 
 
+def test_checkin_wifi_bssid_must_be_normalized_mac_address() -> None:
+    payload = {
+        "protocol_version": 1,
+        "device_id": "AA:BB:CC:DD:EE:FF",
+        "model": "ESPink",
+        "hardware_variant": "ESP32-S3",
+        "firmware_version": "1.0.0",
+        "telemetry": {"wifi_bssid": "11:22:33:44:55:66"},
+    }
+    validate_checkin_payload(payload, "AA:BB:CC:DD:EE:FF")
+
+    payload["telemetry"]["wifi_bssid"] = "11:22:33:44:55"
+    with pytest.raises(ProtocolError, match="BSSID"):
+        validate_checkin_payload(payload, "AA:BB:CC:DD:EE:FF")
+
+
 def test_revoked_record_retains_only_unpair_credentials_and_command() -> None:
     record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
     record.nonces.append("AAAAAAAAAAAAAAAAAAAAAA")

@@ -35,3 +35,5 @@ def test_pairing_translations_exist_in_czech_and_english() -> None:
         assert "rate_limited" in display["error"]
         assert "confirm" not in display["step"]
         assert "insecure_warning" not in display["step"]
+        assert "command_waiting_for_device" in payload["exceptions"]
+        assert "wifi_full_scan" in payload["entity"]["switch"]

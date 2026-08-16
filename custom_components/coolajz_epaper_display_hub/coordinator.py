@@ -34,6 +34,7 @@ _PERSISTED_NUMERIC_TELEMETRY = {
 }
 _PERSISTED_TEXT_TELEMETRY = {
     "ip_address",
+    "wifi_bssid",
     "last_ota_status",
     "available_firmware_version",
 }
@@ -94,11 +95,6 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                     and not isinstance(raw_value, bool)
                     else value
                 )
-        last_refresh = telemetry.get("last_refresh")
-        if isinstance(last_refresh, str | int | float) and not isinstance(
-            last_refresh, bool
-        ):
-            persisted["last_refresh"] = last_refresh
         last_ota_check = telemetry.get("last_ota_check")
         if isinstance(last_ota_check, str):
             persisted["last_ota_check"] = last_ota_check

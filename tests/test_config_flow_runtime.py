@@ -275,6 +275,7 @@ async def test_pair_remove_unload_and_reload(
             "telemetry": {
                 "partial_refresh_count": 4,
                 "ip_address": "192.168.1.123",
+                "wifi_bssid": "11:22:33:44:55:66",
             },
             "firmware_version": "1.0.0",
         },
@@ -288,6 +289,7 @@ async def test_pair_remove_unload_and_reload(
     assert entry.runtime_data.coordinator.is_device_available(record.device_id)
     assert record.last_entity_data["partial_refresh_count"] == 4
     assert record.last_entity_data["ip_address"] == "192.168.1.123"
+    assert record.last_entity_data["wifi_bssid"] == "11:22:33:44:55:66"
     assert (
         entry.runtime_data.coordinator.device_data(record.device_id)[
             "partial_refresh_count"

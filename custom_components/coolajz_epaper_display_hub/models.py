@@ -29,6 +29,7 @@ from .const import (
 from .scheduling import normalize_wake_schedule
 
 MAC_RE = re.compile(r"^[0-9A-F]{12}$")
+COLON_MAC_RE = re.compile(r"^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$")
 KNOWN_VALUE_TYPES = {
     "temperature",
     "humidity",
@@ -506,6 +507,11 @@ def validate_checkin_payload(payload: Mapping[str, Any], device_id: str) -> None
             IPv4Address(ip_address)
         except AddressValueError as err:
             raise ProtocolError("invalid_payload", "Invalid IP address") from err
+    wifi_bssid = telemetry.get("wifi_bssid")
+    if wifi_bssid is not None and (
+        not isinstance(wifi_bssid, str) or not COLON_MAC_RE.fullmatch(wifi_bssid)
+    ):
+        raise ProtocolError("invalid_payload", "Invalid Wi-Fi BSSID")
     ota_status = telemetry.get("last_ota_status")
     if ota_status is not None and ota_status not in OTA_STATUS_VALUES:
         raise ProtocolError("invalid_payload", "Invalid OTA status")
