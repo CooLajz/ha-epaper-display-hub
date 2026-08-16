@@ -587,7 +587,9 @@ not drop or acknowledge the OTA command.
 
 A configured unit override changes only the short unit label sent to the display; it
 does not convert the numeric value. It should therefore be used only when the selected
-entity's native value is already expressed in that unit.
+entity's native value is already expressed in that unit. A unit override containing
+only `-` is serialized as an empty string and explicitly suppresses the unit on the
+display.
 
 ## Key rotation and revocation
 

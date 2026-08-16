@@ -579,6 +579,13 @@ def normalize_state(
         valid = False
         display_value = None
     native_unit = attributes.get("unit_of_measurement")
+    display_unit = (
+        ""
+        if isinstance(unit, str) and unit.strip() == "-"
+        else unit
+        if unit is not None
+        else native_unit
+    )
     default_label = None if is_text else attributes.get("friendly_name")
     return {
         "valid": valid,
@@ -587,9 +594,7 @@ def normalize_state(
         "label": _truncate_utf8(
             label or default_label, MAX_DISPLAY_LABEL_BYTES
         ),
-        "unit": _truncate_utf8(
-            unit if unit is not None else native_unit, MAX_DISPLAY_UNIT_BYTES
-        ),
+        "unit": _truncate_utf8(display_unit, MAX_DISPLAY_UNIT_BYTES),
     }
 
 

@@ -185,6 +185,14 @@ def test_display_value_preserves_configured_trailing_zeroes() -> None:
     assert normalized["display_value"] == "24.00"
 
 
+def test_hyphen_unit_override_hides_native_unit() -> None:
+    """A hyphen explicitly suppresses the entity's native display unit."""
+    state = FakeState("24", {"unit_of_measurement": "°C"})
+
+    assert normalize_state(state, unit=None)["unit"] == "°C"
+    assert normalize_state(state, unit="-")["unit"] == ""
+
+
 def test_display_payload_respects_firmware_utf8_limits() -> None:
     """Long metadata is bounded and an oversized value invalidates only its slot."""
     normalized = normalize_state(
