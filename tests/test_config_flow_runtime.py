@@ -130,12 +130,16 @@ def test_device_switches_are_not_in_reconfigure_form() -> None:
 
 
 def test_partial_refresh_number_has_device_range() -> None:
-    assert EpaperPartialRefreshNumber._attr_native_min_value == 0
-    assert EpaperPartialRefreshNumber._attr_native_max_value == 50
-    assert EpaperPartialRefreshNumber._attr_native_step == 1
+    entity = object.__new__(EpaperPartialRefreshNumber)
+
+    assert entity.native_min_value == 0
+    assert entity.native_max_value == 50
+    assert entity.native_step == 1
 
 
-def _reconfigure_input(*, first_hour_interval: int = 30) -> dict[str, Any]:
+def _reconfigure_input(
+    *, first_hour_interval: int = DEFAULT_WAKE_SCHEDULE["0"]
+) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
         **{
