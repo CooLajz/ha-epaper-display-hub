@@ -79,6 +79,8 @@ VALUE_TYPES = [
     "volatile_organic_compounds",
     "pressure",
     "number",
+    "state",
+    "text",
 ]
 
 
@@ -110,7 +112,7 @@ def _value_slot_schema(prefix: str) -> dict[Any, Any]:
     """Build flat selector fields for a display value slot."""
     return {
         vol.Optional(f"{prefix}_entity"): EntitySelector(
-            EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+            EntitySelectorConfig()
         ),
         vol.Optional(f"{prefix}_type", default="auto"): SelectSelector(
             SelectSelectorConfig(options=VALUE_TYPES)

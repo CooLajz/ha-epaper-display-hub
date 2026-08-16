@@ -266,13 +266,11 @@ A successful response contains only trusted time metadata:
 {
   "device_id": "AA:BB:CC:DD:EE:FF",
   "protocol_version": 1,
-  "server_time": 1786780800,
-  "server_time_iso": "2026-08-15T10:00:00+02:00"
+  "server_time": 1786780800
 }
 ```
 
-`server_time` is Unix seconds in UTC. `server_time_iso` is the same instant rendered
-in the Home Assistant timezone. The response includes `X-EPD-Signature`,
+`server_time` is Unix seconds in UTC. The response includes `X-EPD-Signature`,
 `X-EPD-Device-ID`, `X-EPD-Protocol-Version`, and the original request nonce in
 `X-EPD-Nonce`. Its signature uses a direction-specific context bound to that nonce:
 
@@ -298,8 +296,8 @@ device_id = AA:BB:CC:DD:EE:FF
 nonce = BBBBBBBBBBBBBBBBBBBBBB
 request_body = {"device_id":"AA:BB:CC:DD:EE:FF","nonce":"BBBBBBBBBBBBBBBBBBBBBB","protocol_version":1}
 request_signature = 71bd4d30b99446abb492086e5fe40f4607350a469ee9fe36f15be4cb693c00a5
-response_body = {"device_id":"AA:BB:CC:DD:EE:FF","protocol_version":1,"server_time":1786780800,"server_time_iso":"2026-08-15T10:00:00+02:00"}
-response_signature = e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d616d3
+response_body = {"device_id":"AA:BB:CC:DD:EE:FF","protocol_version":1,"server_time":1786780800}
+response_signature = b9e56fb4276c61ab2f737b8ba3b00e1ed4860c43ea8cc015cb70eb810123c004
 ```
 
 ### Request body
@@ -358,7 +356,6 @@ one-time commands. A bad source entity affects only its own item:
   "revision": 5,
   "desired_config": {
     "revision": 5,
-    "pending": true,
     "values": {
       "show_battery_voltage": true,
       "partial_refreshes_between_full": 10
@@ -375,9 +372,7 @@ one-time commands. A bad source entity affects only its own item:
     "bottom_left": {"valid": false, "display_value": null},
     "weather": {
       "valid": true,
-      "condition": "partlycloudy",
-      "temperature": 22.0,
-      "humidity": 58.0
+      "condition": "partlycloudy"
     }
   },
   "commands": [
@@ -391,6 +386,16 @@ Hub according to the configured decimal precision. Firmware must render this str
 unchanged and must not parse, round, pad, or otherwise reformat it. `type` may select
 the visual template, while `label` and `unit` remain separate display strings. An
 invalid slot uses `null` as its `display_value`.
+
+The Hub bounds UTF-8 display data to the firmware contract: 80 bytes for
+`display_value`, 80 bytes for `label`, 24 bytes for `unit`, and 32 bytes for
+`weather.condition`. Oversized numeric text invalidates only its own slot. Labels and
+units are shortened without splitting a UTF-8 character, while an oversized weather
+condition disables only the weather item.
+
+Types `state` and `text` carry the Home Assistant state as final printable UTF-8 text
+without numeric conversion or decimal formatting. When their label is not configured,
+the Hub sends no label and firmware uses its default **Stav** label.
 
 If a weather entity is configured, the Hub exposes a persistent per-device runtime
 switch controlling its delivery. When **Show weather** is off, the signed response
@@ -414,6 +419,26 @@ lowercase_sha256_of_exact_response_body_bytes
 
 Firmware must verify the response device ID, original nonce, time, exact-body hash,
 and HMAC before applying configuration, commands, or display data.
+
+### Complete check-in response interoperability vector
+
+The canonical JSON body is the compact, UTF-8 encoded, key-sorted form of the response
+example above, including the `bottom_right` and `extra_humidity` slots. The shared
+deterministic vector is:
+
+```text
+key_hex = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+device_id = AA:BB:CC:DD:EE:FF
+timestamp = 1786825023
+nonce = AAAAAAAAAAAAAAAAAAAAAA
+ota_command_id = ota-check-000001
+response_body = {"commands":[{"id":"ota-check-000001","type":"ota_check"}],"content":{"bottom_left":{"display_value":null,"valid":false},"bottom_right":{"display_value":null,"valid":false},"extra_humidity":{"display_value":"58","label":"Outside humidity","type":"humidity","unit":"%","valid":true},"main":{"display_value":"24.1","label":"Living room","type":"temperature","unit":"°C","valid":true},"weather":{"condition":"partlycloudy","valid":true}},"desired_config":{"revision":5,"values":{"partial_refreshes_between_full":10,"show_battery_voltage":true}},"next_wake_at":"2026-08-15T23:00:00+02:00","protocol_version":1,"revision":5,"server_time":"2026-08-15T22:17:03+02:00","sleep_seconds":2577}
+response_signature = 8bb68eb296c73a72db541daea2501676c49fae554029d50c9fc73b8c5c354d52
+```
+
+Both implementations must build or parse the complete response and reproduce this
+signature. A schema, ordering, encoding, or body-byte change intentionally changes the
+vector and therefore requires a coordinated protocol update.
 
 ## Wake scheduling and offline fallback
 
@@ -453,9 +478,8 @@ after missing that deadline and returns automatically on its next successful che
   represents this transfer state and clears in the same wake cycle.
 - Firmware reports the revision it has stored, plus `applied: true` only after all
   values in that revision are actually active.
-- Applied state remains independent: `desired_config.pending` stays true while
-  `applied_revision < desired_revision`, even after the Hub-side transfer indicator
-  has cleared.
+- Applied state remains tracked internally from `reported_config`, independently of
+  the Hub-side transfer indicator.
 - Unknown future desired keys must not make known keys unusable. Firmware should
   report unsupported keys in a future capability/error extension instead of claiming
   that the full revision was applied.
@@ -480,10 +504,11 @@ at most one command for each local calendar day, at the configured time or as so
 the Hub next evaluates the schedule after that time. The first check-in at or after the
 due time therefore receives the command. Disabling automatic OTA prevents future
 automatic commands but does not retract a command that is already in the durable queue.
-Only one automatic OTA command may be outstanding. If a failed older command is still
-waiting for acknowledgement at the next daily time, the Hub continues delivering that
-ID; after it is acknowledged, the current day's due command can be created without
-building an unbounded queue.
+Only one OTA command, manual or automatic, may be outstanding. If a failed older
+command is still waiting for acknowledgement, the Hub continues delivering that ID.
+After it is acknowledged, a currently due automatic request can be created without
+building an unbounded queue. Every response contains at most 16 validated commands;
+command IDs are 1 to 128 bytes of printable non-space ASCII.
 
 The independent **OTA on next wake** switch creates a persistent manual request even
 when automatic OTA is disabled. It can be turned off to cancel the request only before

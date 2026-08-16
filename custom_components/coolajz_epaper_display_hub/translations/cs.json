@@ -143,8 +143,7 @@
     },
     "binary_sensor": {
       "available": {"name": "Dostupný"},
-      "configuration_pending": {"name": "Čekající konfigurace"},
-      "last_transfer_success": {"name": "Poslední přenos úspěšný"}
+      "configuration_pending": {"name": "Čekající konfigurace"}
     },
     "switch": {
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},

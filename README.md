@@ -59,7 +59,7 @@ independently.
 
 The current layout provides one main value, two bottom values, a weather entity, and
 optional additional humidity. Numeric slots use native Home Assistant entity
-selectors, automatic device-class detection, manual type override, label, decimal
+selectors, automatic device-class detection, numeric or text/state type override, label, decimal
 places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 

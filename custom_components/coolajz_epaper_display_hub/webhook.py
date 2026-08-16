@@ -202,12 +202,10 @@ class TimeSyncView(HomeAssistantView):
             remember_nonce(record, nonce)
             await runtime.store.async_save()
             response_created_at = datetime.now(UTC).replace(microsecond=0)
-            timezone = dt_util.get_time_zone(hass.config.time_zone) or UTC
             response_payload = {
                 "protocol_version": PROTOCOL_VERSION,
                 "device_id": device_id,
                 "server_time": int(response_created_at.timestamp()),
-                "server_time_iso": response_created_at.astimezone(timezone).isoformat(),
             }
             response_body = canonical_json(response_payload)
             signature = sign(

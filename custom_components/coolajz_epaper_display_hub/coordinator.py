@@ -108,7 +108,6 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         firmware_version = payload.get("firmware_version")
         if isinstance(firmware_version, str):
             persisted["firmware_version"] = firmware_version
-        persisted["last_transfer_success"] = True
         return persisted
 
     async def async_schedule_automatic_ota(self, now: datetime | None = None) -> bool:
@@ -183,7 +182,6 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             "model": payload.get("model"),
             "hardware_variant": payload.get("hardware_variant"),
             "protocol_version": PROTOCOL_VERSION,
-            "last_transfer_success": True,
             "next_wake_at": planned_wake,
             "last_planned_interval_seconds": sleep_seconds,
         }
@@ -202,7 +200,6 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             "desired_config": {
                 "revision": record.desired_revision,
                 "values": dict(record.desired),
-                "pending": record.configuration_application_pending,
             },
             "content": normalize_content(
                 self.hass,

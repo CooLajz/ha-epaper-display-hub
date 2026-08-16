@@ -140,6 +140,49 @@ def test_display_value_preserves_configured_trailing_zeroes() -> None:
     assert normalized["display_value"] == "24.00"
 
 
+def test_display_payload_respects_firmware_utf8_limits() -> None:
+    """Long metadata is bounded and an oversized value invalidates only its slot."""
+    normalized = normalize_state(
+        FakeState(
+            "1" * 81,
+            {
+                "friendly_name": "Příliš dlouhý název " * 4,
+                "unit_of_measurement": "velmi dlouhá jednotka °C" * 2,
+            },
+        ),
+        decimals=0,
+    )
+
+    assert normalized["valid"] is False
+    assert normalized["display_value"] is None
+    assert len(normalized["label"].encode("utf-8")) <= 80
+    assert len(normalized["unit"].encode("utf-8")) <= 24
+
+
+def test_state_and_text_values_are_sent_as_printable_utf8() -> None:
+    state = normalize_state(
+        FakeState("Zapnuto", {"friendly_name": "Relé"}), configured_type="state"
+    )
+    text = normalize_state(
+        FakeState("Příliš zataženo", {}), configured_type="text"
+    )
+    invalid = normalize_state(
+        FakeState("řádek 1\nřádek 2", {}), configured_type="text"
+    )
+
+    assert state == {
+        "valid": True,
+        "display_value": "Zapnuto",
+        "type": "state",
+        "label": None,
+        "unit": None,
+    }
+    assert text["valid"] is True
+    assert text["display_value"] == "Příliš zataženo"
+    assert invalid["valid"] is False
+    assert invalid["display_value"] is None
+
+
 def test_content_and_weather_normalization_is_fault_isolated() -> None:
     """One missing entity does not invalidate weather or another numeric slot."""
     hass = FakeHass(
@@ -177,9 +220,13 @@ def test_content_and_weather_normalization_is_fault_isolated() -> None:
     assert hidden["weather"] == {
         "valid": False,
         "condition": None,
-        "temperature": None,
-        "humidity": None,
     }
+
+    invalid_weather = normalize_content(
+        FakeHass({"weather.long": FakeState("x" * 33, {})}),
+        {"weather": "weather.long"},
+    )
+    assert invalid_weather["weather"] == {"valid": False, "condition": None}
 
 
 def test_desired_reported_and_durable_commands_round_trip() -> None:
@@ -189,18 +236,17 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     assert record.update_desired({"show_battery_voltage": False})
     assert record.update_configuration({}, {"22": 60, "23": 15})
     revision = record.desired_revision
-    record.pending_commands.append({"id": "refresh-1", "type": "full_refresh"})
+    record.pending_commands.append({"id": "refresh-1", "type": "ota_check"})
     record.last_contact_at = "2026-08-15T22:17:03+02:00"
     record.next_wake_at = "2026-08-15T23:00:00+02:00"
     record.last_planned_interval_seconds = 2577
     record.last_entity_data = {
         "battery_percent": 81.0,
         "battery_voltage": 3.912,
-        "last_transfer_success": True,
     }
     assert record.update_show_weather(False)
     restored = DeviceRecord.from_dict(record.as_dict())
-    assert restored.pending_commands == [{"id": "refresh-1", "type": "full_refresh"}]
+    assert restored.pending_commands == [{"id": "refresh-1", "type": "ota_check"}]
     assert restored.wake_schedule["22"] == 60
     assert restored.wake_schedule["23"] == 15
     assert restored.next_wake_at == "2026-08-15T23:00:00+02:00"

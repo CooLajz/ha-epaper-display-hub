@@ -4,7 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from custom_components.coolajz_epaper_display_hub.const import TIME_SYNC_PATH
+from custom_components.coolajz_epaper_display_hub.const import (
+    CHECKIN_PATH,
+    TIME_SYNC_PATH,
+)
 from custom_components.coolajz_epaper_display_hub.models import (
     DeviceRecord,
     ProtocolError,
@@ -13,6 +16,7 @@ from custom_components.coolajz_epaper_display_hub.security import (
     DeviceRateLimiter,
     canonical_json,
     canonical_request,
+    canonical_response,
     canonical_time_request,
     canonical_time_response,
     generate_nonce,
@@ -59,6 +63,58 @@ def test_documented_interoperability_vector() -> None:
     )
 
 
+def test_documented_checkin_response_vector() -> None:
+    """Keep the complete signed response schema stable across Hub and firmware."""
+    secret = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    body = canonical_json(
+        {
+            "protocol_version": 1,
+            "server_time": "2026-08-15T22:17:03+02:00",
+            "next_wake_at": "2026-08-15T23:00:00+02:00",
+            "sleep_seconds": 2577,
+            "revision": 5,
+            "desired_config": {
+                "revision": 5,
+                "values": {
+                    "partial_refreshes_between_full": 10,
+                    "show_battery_voltage": True,
+                },
+            },
+            "content": {
+                "main": {
+                    "valid": True,
+                    "display_value": "24.1",
+                    "type": "temperature",
+                    "label": "Living room",
+                    "unit": "°C",
+                },
+                "bottom_left": {"valid": False, "display_value": None},
+                "bottom_right": {"valid": False, "display_value": None},
+                "extra_humidity": {
+                    "valid": True,
+                    "display_value": "58",
+                    "type": "humidity",
+                    "label": "Outside humidity",
+                    "unit": "%",
+                },
+                "weather": {"valid": True, "condition": "partlycloudy"},
+            },
+            "commands": [{"id": "ota-check-000001", "type": "ota_check"}],
+        }
+    )
+    canonical = canonical_response(
+        200,
+        CHECKIN_PATH,
+        "AA:BB:CC:DD:EE:FF",
+        1786825023,
+        "AAAAAAAAAAAAAAAAAAAAAA",
+        body,
+    )
+    assert sign(secret, canonical) == (
+        "8bb68eb296c73a72db541daea2501676c49fae554029d50c9fc73b8c5c354d52"
+    )
+
+
 def test_other_device_key_is_rejected() -> None:
     """Compromising one display cannot authenticate a second one."""
     first_key = generate_secret()
@@ -89,7 +145,6 @@ def test_documented_time_sync_interoperability_vector() -> None:
             "protocol_version": 1,
             "device_id": device_id,
             "server_time": 1786780800,
-            "server_time_iso": "2026-08-15T10:00:00+02:00",
         }
     )
     response_canonical = canonical_time_response(
@@ -97,7 +152,7 @@ def test_documented_time_sync_interoperability_vector() -> None:
     )
     signature = sign(secret, response_canonical)
     assert signature == (
-        "e81fb4af949697b2cbb63b1da5409249caeaeaebe4c4e32877076ab710d616d3"
+        "b9e56fb4276c61ab2f737b8ba3b00e1ed4860c43ea8cc015cb70eb810123c004"
     )
     wrong_nonce = canonical_time_response(
         200, TIME_SYNC_PATH, device_id, generate_nonce(), response_body

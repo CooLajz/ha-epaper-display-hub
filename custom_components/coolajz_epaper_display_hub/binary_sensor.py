@@ -12,9 +12,11 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HubConfigEntry
+from .const import CONF_DEVICE_ID, DOMAIN
 from .entity import EpaperDisplayEntity
 
 
@@ -35,12 +37,6 @@ DESCRIPTIONS = (
     EpaperBinaryDescription(
         key="configuration_pending",
         mode="pending",
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    EpaperBinaryDescription(
-        key="last_transfer_success",
-        mode="transfer",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
@@ -65,12 +61,8 @@ class EpaperBinarySensor(EpaperDisplayEntity, BinarySensorEntity):
         """Return the requested diagnostic state."""
         if self.entity_description.mode == "available":
             return self.coordinator.is_device_available(self.device_id)
-        if self.entity_description.mode == "pending":
-            record = self.entry.runtime_data.store.devices.get(self.device_id)
-            return bool(record and record.configuration_pending)
-        return bool(
-            self.coordinator.device_data(self.device_id).get("last_transfer_success")
-        )
+        record = self.entry.runtime_data.store.devices.get(self.device_id)
+        return bool(record and record.configuration_pending)
 
 
 async def async_setup_entry(
@@ -79,7 +71,15 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up one diagnostic set per subentry."""
-    for subentry_id in entry.subentries:
+    registry = er.async_get(hass)
+    for subentry_id, subentry in entry.subentries.items():
+        obsolete_entity_id = registry.async_get_entity_id(
+            "binary_sensor",
+            DOMAIN,
+            f"{subentry.data[CONF_DEVICE_ID]}-last_transfer_success",
+        )
+        if obsolete_entity_id is not None:
+            registry.async_remove(obsolete_entity_id)
         async_add_entities(
             [EpaperBinarySensor(entry, subentry_id, item) for item in DESCRIPTIONS],
             config_subentry_id=subentry_id,

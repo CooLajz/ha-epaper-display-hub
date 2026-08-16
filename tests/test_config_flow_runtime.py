@@ -22,6 +22,7 @@ from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa
     DESCRIPTIONS as BINARY_SENSOR_DESCRIPTIONS,
 )
 from custom_components.coolajz_epaper_display_hub.config_flow import (  # noqa: E402
+    VALUE_TYPES,
     _display_schema,
 )
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
@@ -103,6 +104,12 @@ def test_pending_configuration_is_not_a_problem_device_class() -> None:
         if item.key == "configuration_pending"
     )
     assert pending.device_class is None
+
+
+def test_text_value_types_are_available_for_any_home_assistant_entity() -> None:
+    """Text templates must be selectable for non-numeric entity states."""
+    assert "state" in VALUE_TYPES
+    assert "text" in VALUE_TYPES
 
 
 def test_device_switches_are_not_in_reconfigure_form() -> None:
@@ -236,6 +243,7 @@ async def test_pair_remove_unload_and_reload(
         {},
     )
     assert response["revision"] == record.desired_revision
+    assert "pending" not in response["desired_config"]
     assert response["sleep_seconds"] > 0
     assert datetime.fromisoformat(response["server_time"]).tzinfo is not None
     assert datetime.fromisoformat(response["next_wake_at"]).tzinfo is not None
@@ -511,13 +519,9 @@ async def test_time_sync_security_and_rate_limit(
         "protocol_version",
         "device_id",
         "server_time",
-        "server_time_iso",
     }
     assert response_payload["device_id"] == device_id
     assert isinstance(response_payload["server_time"], int)
-    assert (
-        datetime.fromisoformat(response_payload["server_time_iso"]).tzinfo is not None
-    )
     assert response.headers[NONCE_HEADER] == valid_nonce
     assert verify_signature(
         secret,

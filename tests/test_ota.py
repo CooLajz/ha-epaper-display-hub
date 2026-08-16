@@ -113,6 +113,36 @@ def test_manual_ota_is_independent_of_automatic_ota() -> None:
     ]
 
 
+def test_only_one_ota_command_can_wait_for_acknowledgement() -> None:
+    record = _record()
+    prague = ZoneInfo("Europe/Prague")
+
+    assert record.enqueue_ota_command("manual-1", OTA_COMMAND_SOURCE_MANUAL)
+    assert not record.enqueue_ota_command("manual-2", OTA_COMMAND_SOURCE_MANUAL)
+    record.update_ota_settings(True, "03:00:00")
+    assert not record.schedule_automatic_ota(
+        datetime(2026, 8, 15, 3, 0, tzinfo=prague), "auto-blocked"
+    )
+    assert record.last_automatic_ota_date is None
+
+    record.mark_commands_delivered({"manual-1"})
+    assert not record.enqueue_ota_command("manual-3", OTA_COMMAND_SOURCE_MANUAL)
+    record.acknowledge_commands({"manual-1"})
+    assert record.schedule_automatic_ota(
+        datetime(2026, 8, 15, 3, 1, tzinfo=prague), "auto-1"
+    )
+    assert record.commands_for_delivery() == [{"id": "auto-1", "type": "ota_check"}]
+
+
+def test_command_ids_match_firmware_contract() -> None:
+    record = _record()
+
+    with pytest.raises(ValueError, match="command ID"):
+        record.enqueue_ota_command("contains space", OTA_COMMAND_SOURCE_MANUAL)
+    with pytest.raises(ValueError, match="command ID"):
+        record.enqueue_ota_command("x" * 129, OTA_COMMAND_SOURCE_MANUAL)
+
+
 def test_ota_settings_and_delivered_queue_survive_storage_round_trip() -> None:
     record = _record()
     record.update_ota_settings(True, "04:15:00")

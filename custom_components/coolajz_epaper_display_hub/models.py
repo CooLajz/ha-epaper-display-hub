@@ -34,7 +34,15 @@ KNOWN_VALUE_TYPES = {
     "volatile_organic_compounds",
     "pressure",
     "number",
+    "state",
+    "text",
 }
+MAX_COMMANDS_PER_RESPONSE = 16
+MAX_COMMAND_ID_BYTES = 128
+MAX_DISPLAY_VALUE_BYTES = 80
+MAX_DISPLAY_LABEL_BYTES = 80
+MAX_DISPLAY_UNIT_BYTES = 24
+MAX_WEATHER_CONDITION_BYTES = 32
 
 
 class ProtocolError(ValueError):
@@ -248,10 +256,14 @@ class DeviceRecord:
         *,
         automatic_date: str | None = None,
     ) -> bool:
-        """Append one durable OTA command unless its ID already exists."""
+        """Append one durable OTA command unless another OTA check is pending."""
         if source not in {OTA_COMMAND_SOURCE_MANUAL, OTA_COMMAND_SOURCE_AUTOMATIC}:
             raise ValueError("Unsupported OTA command source")
-        if any(str(item.get("id", "")) == command_id for item in self.pending_commands):
+        if not _valid_command_id(command_id):
+            raise ValueError("Invalid command ID")
+        if any(
+            item.get("type") == OTA_COMMAND_TYPE for item in self.pending_commands
+        ):
             return False
         command: dict[str, Any] = {
             "id": command_id,
@@ -308,8 +320,9 @@ class DeviceRecord:
         return [
             {"id": str(item["id"]), "type": str(item["type"])}
             for item in self.pending_commands
-            if item.get("id") and item.get("type")
-        ]
+            if _valid_command_id(item.get("id"))
+            and item.get("type") == OTA_COMMAND_TYPE
+        ][:MAX_COMMANDS_PER_RESPONSE]
 
     def update_ota_settings(self, enabled: bool, check_time: Any) -> bool:
         """Update Hub-owned daily OTA scheduling settings."""
@@ -340,18 +353,12 @@ class DeviceRecord:
             return False
         if self.last_automatic_ota_date == today:
             return False
-        has_outstanding = any(
-            item.get("type") == OTA_COMMAND_TYPE
-            and item.get("source") == OTA_COMMAND_SOURCE_AUTOMATIC
-            for item in self.pending_commands
-        )
-        if has_outstanding:
-            return False
-        self.enqueue_ota_command(
+        if not self.enqueue_ota_command(
             command_id,
             OTA_COMMAND_SOURCE_AUTOMATIC,
             automatic_date=today,
-        )
+        ):
+            return False
         self.last_automatic_ota_date = today
         return True
 
@@ -519,17 +526,39 @@ def normalize_state(
     value_type = configured_type if configured_type != "auto" else device_class
     if value_type not in KNOWN_VALUE_TYPES:
         value_type = "number"
-    number = optional_number(raw_state)
-    valid = raw_state not in ("unknown", "unavailable", None) and number is not None
+    is_text = value_type in {"state", "text"}
+    number = None if is_text else optional_number(raw_state)
+    valid = raw_state not in ("unknown", "unavailable", None)
+    if is_text:
+        display_value = str(raw_state) if valid else None
+        valid = bool(display_value) and _valid_utf8_display_text(
+            display_value, MAX_DISPLAY_VALUE_BYTES
+        )
+        if not valid:
+            display_value = None
+    else:
+        valid = valid and number is not None
+        display_value = (
+            f"{number:.{decimals}f}" if valid and number is not None else None
+        )
+    if (
+        display_value is not None
+        and len(display_value.encode("utf-8")) > MAX_DISPLAY_VALUE_BYTES
+    ):
+        valid = False
+        display_value = None
     native_unit = attributes.get("unit_of_measurement")
+    default_label = None if is_text else attributes.get("friendly_name")
     return {
         "valid": valid,
-        "display_value": (
-            f"{number:.{decimals}f}" if valid and number is not None else None
-        ),
+        "display_value": display_value,
         "type": value_type,
-        "label": label or attributes.get("friendly_name"),
-        "unit": unit if unit is not None else native_unit,
+        "label": _truncate_utf8(
+            label or default_label, MAX_DISPLAY_LABEL_BYTES
+        ),
+        "unit": _truncate_utf8(
+            unit if unit is not None else native_unit, MAX_DISPLAY_UNIT_BYTES
+        ),
     }
 
 
@@ -557,16 +586,15 @@ def normalize_content(
 
     weather_id = content.get("weather") if show_weather else None
     weather_state = hass.states.get(weather_id) if isinstance(weather_id, str) else None
-    weather_attributes = (
-        getattr(weather_state, "attributes", {}) if weather_state else {}
-    )
     condition = getattr(weather_state, "state", None) if weather_state else None
-    weather_valid = condition not in (None, "unknown", "unavailable")
+    weather_valid = (
+        isinstance(condition, str)
+        and condition not in ("unknown", "unavailable")
+        and _valid_utf8_display_text(condition, MAX_WEATHER_CONDITION_BYTES)
+    )
     result["weather"] = {
         "valid": weather_valid,
         "condition": condition if weather_valid else None,
-        "temperature": optional_number(weather_attributes.get("temperature")),
-        "humidity": optional_number(weather_attributes.get("humidity")),
     }
 
     humidity_id = content.get("extra_humidity")
@@ -577,3 +605,40 @@ def normalize_content(
         humidity_state, configured_type="humidity", decimals=0
     )
     return result
+
+
+def _truncate_utf8(value: Any, maximum_bytes: int) -> str | None:
+    """Return text shortened without splitting a UTF-8 character."""
+    if value is None:
+        return None
+    sanitized = "".join(
+        character
+        for character in str(value)
+        if ord(character) >= 0x20 and ord(character) != 0x7F
+    )
+    encoded = sanitized.encode("utf-8")
+    if len(encoded) <= maximum_bytes:
+        return sanitized
+    return encoded[:maximum_bytes].decode("utf-8", errors="ignore")
+
+
+def _valid_utf8_display_text(value: str, maximum_bytes: int) -> bool:
+    """Match firmware validation for non-empty printable UTF-8 text."""
+    return (
+        0 < len(value.encode("utf-8")) <= maximum_bytes
+        and all(
+            ord(character) >= 0x20 and ord(character) != 0x7F
+            for character in value
+        )
+    )
+
+
+def _valid_command_id(value: Any) -> bool:
+    """Match the firmware command ID bounds and printable ASCII contract."""
+    if not isinstance(value, str):
+        return False
+    encoded = value.encode("ascii", errors="strict") if value.isascii() else b""
+    return (
+        0 < len(encoded) <= MAX_COMMAND_ID_BYTES
+        and all(0x21 <= character <= 0x7E for character in encoded)
+    )

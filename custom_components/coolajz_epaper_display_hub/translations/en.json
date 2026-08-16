@@ -143,8 +143,7 @@
     },
     "binary_sensor": {
       "available": {"name": "Available"},
-      "configuration_pending": {"name": "Configuration pending"},
-      "last_transfer_success": {"name": "Last transfer successful"}
+      "configuration_pending": {"name": "Configuration pending"}
     },
     "switch": {
       "show_battery_voltage": {"name": "Show battery voltage"},
