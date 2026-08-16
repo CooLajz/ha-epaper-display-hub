@@ -84,8 +84,8 @@ OTA is also orchestrated exclusively by the Hub. Each display exposes an
 automatic OTA is enabled, the display configuration form also shows its daily OTA
 check time. The time is evaluated in Home Assistant's timezone.
 Both automatic and manual requests create the same durable `ota_check` command, which
-is repeated until firmware acknowledges its ID. The manual switch turns off after the
-first signed delivery; this does not remove the internally queued command. Firmware
+is repeated until firmware acknowledges its ID. Once enabled, the manual switch cannot
+be cancelled and turns off only after that acknowledgement. Firmware
 must verify the complete response HMAC before applying commands, persist processed IDs
 for idempotence, and follow the completion/acknowledgement rules in
 [protocol v1](docs/PROTOCOL.md#hub-owned-ota-orchestration).
@@ -93,6 +93,12 @@ for idempotence, and follow the completion/acknowledgement rules in
 The Hub exposes the last OTA check time, its `current` / `updated` / `failed` status,
 and the available firmware version when the display can determine it. The installed
 version remains available separately as **Firmware version**.
+
+Each display also exposes **Find strongest Wi-Fi AP once**. The switch queues a durable
+`wifi_full_scan` command. On receipt, firmware persists its ID, restarts, performs an
+all-channel scan for the configured SSID, connects to the strongest AP, and acknowledges
+completion. Like the one-time OTA switch, it cannot be cancelled while pending and
+turns off only after the firmware acknowledgement.
 
 The device also exposes **Partial refreshes between full refreshes** as a number
 entity with a whole-number range of 0 to 50. Like the battery-voltage switch, this is

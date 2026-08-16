@@ -377,7 +377,8 @@ one-time commands. A bad source entity affects only its own item:
     }
   },
   "commands": [
-    {"id": "durable-url-safe-command-id", "type": "ota_check"}
+    {"id": "durable-url-safe-command-id", "type": "ota_check"},
+    {"id": "another-durable-command-id", "type": "wifi_full_scan"}
   ]
 }
 ```
@@ -521,10 +522,9 @@ building an unbounded queue. Every response contains at most 16 validated comman
 command IDs are 1 to 128 bytes of printable non-space ASCII.
 
 The independent **OTA on next wake** switch creates a persistent manual request even
-when automatic OTA is disabled. It can be turned off to cancel the request only before
-the Hub includes it in a signed check-in response. Once included, the switch returns to
-off automatically while the internal command remains queued. Turning the switch off at
-that point cannot cancel delivery or acknowledgement tracking.
+when automatic OTA is disabled. Once enabled it cannot be cancelled. It remains on
+until firmware acknowledges completion; an attempted turn-off is rejected by Home
+Assistant with a translated error.
 
 The only protocol-v1 OTA command is:
 
@@ -559,6 +559,31 @@ durable command acknowledgement.
 
 `auto_ota` is not a firmware desired-configuration key. The Hub translates both the
 manual switch and daily schedule into the same signed `ota_check` command contract.
+
+## One-time strongest Wi-Fi AP scan
+
+Each display has a **Find strongest Wi-Fi AP once** switch. Enabling it queues this
+durable protocol-v1 command:
+
+```json
+{
+  "id": "durable-url-safe-command-id",
+  "type": "wifi_full_scan"
+}
+```
+
+The switch remains on and cannot be cancelled until firmware acknowledges the exact
+command ID. Firmware persists a newly accepted ID before restarting. On startup it
+bypasses the cached channel/BSSID and uses an all-channel scan sorted by signal for the
+already configured SSID. After a successful connection it persists completion before
+including the ID in `command_acknowledgements`. The Hub then removes the command and
+the switch turns off. If connection or check-in fails, the pending state survives deep
+sleep and the firmware retries after its normal five-minute failure interval. A
+completed scan is never repeated merely because acknowledgement delivery failed.
+
+`ota_check` and `wifi_full_scan` have independent durable state and may be delivered
+together. A Wi-Fi scan restart defers OTA processing to the following check-in; it does
+not drop or acknowledge the OTA command.
 
 A configured unit override changes only the short unit label sent to the display; it
 does not convert the numeric value. It should therefore be used only when the selected

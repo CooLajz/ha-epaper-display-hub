@@ -116,6 +116,11 @@
       }
     }
   },
+  "exceptions": {
+    "command_waiting_for_device": {
+      "message": "Tuto jednorázovou akci již nelze zrušit. Přepínač se vypne, až zařízení potvrdí její dokončení."
+    }
+  },
   "entity": {
     "sensor": {
       "battery": {"name": "Baterie"},
@@ -150,7 +155,8 @@
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
       "show_weather": {"name": "Zobrazovat počasí"},
       "auto_ota": {"name": "Automatická OTA"},
-      "ota_next_wake": {"name": "OTA při příštím probuzení"}
+      "ota_next_wake": {"name": "OTA při příštím probuzení"},
+      "wifi_full_scan": {"name": "Jednorázově vyhledat nejsilnější Wi-Fi AP"}
     },
     "number": {
       "partial_refreshes_between_full": {"name": "Počet partial refreshů mezi full refreshi"}

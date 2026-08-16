@@ -24,6 +24,7 @@ from .const import (
     PROTOCOL_VERSION,
     UNPAIR_COMMAND_TYPE,
     VALUE_SLOTS,
+    WIFI_FULL_SCAN_COMMAND_TYPE,
 )
 from .scheduling import normalize_wake_schedule
 
@@ -244,13 +245,35 @@ class DeviceRecord:
 
     @property
     def manual_ota_requested(self) -> bool:
-        """Return whether a manual OTA command still waits for first delivery."""
+        """Return whether a manual OTA command waits for firmware acknowledgement."""
         return any(
             item.get("type") == OTA_COMMAND_TYPE
             and item.get("source") == OTA_COMMAND_SOURCE_MANUAL
-            and not bool(item.get("delivered", False))
             for item in self.pending_commands
         )
+
+    @property
+    def wifi_full_scan_requested(self) -> bool:
+        """Return whether a Wi-Fi full scan waits for firmware acknowledgement."""
+        return any(
+            item.get("type") == WIFI_FULL_SCAN_COMMAND_TYPE
+            for item in self.pending_commands
+        )
+
+    def enqueue_wifi_full_scan_command(self, command_id: str) -> bool:
+        """Append one durable Wi-Fi full scan command unless one is pending."""
+        if not _valid_command_id(command_id):
+            raise ValueError("Invalid command ID")
+        if self.wifi_full_scan_requested:
+            return False
+        self.pending_commands.append(
+            {
+                "id": command_id,
+                "type": WIFI_FULL_SCAN_COMMAND_TYPE,
+                "delivered": False,
+            }
+        )
+        return True
 
     def enqueue_ota_command(
         self,
@@ -277,22 +300,6 @@ class DeviceRecord:
         if automatic_date is not None:
             command["automatic_date"] = automatic_date
         self.pending_commands.append(command)
-        return True
-
-    def cancel_undelivered_manual_ota(self) -> bool:
-        """Cancel only manual OTA commands that have never been delivered."""
-        retained = [
-            item
-            for item in self.pending_commands
-            if not (
-                item.get("type") == OTA_COMMAND_TYPE
-                and item.get("source") == OTA_COMMAND_SOURCE_MANUAL
-                and not bool(item.get("delivered", False))
-            )
-        ]
-        if len(retained) == len(self.pending_commands):
-            return False
-        self.pending_commands = retained
         return True
 
     def mark_commands_delivered(self, command_ids: set[str]) -> bool:
@@ -324,7 +331,8 @@ class DeviceRecord:
             {"id": str(item["id"]), "type": str(item["type"])}
             for item in self.pending_commands
             if _valid_command_id(item.get("id"))
-            and item.get("type") == OTA_COMMAND_TYPE
+            and item.get("type")
+            in {OTA_COMMAND_TYPE, WIFI_FULL_SCAN_COMMAND_TYPE}
         ][:MAX_COMMANDS_PER_RESPONSE]
 
     def update_ota_settings(self, enabled: bool, check_time: Any) -> bool:

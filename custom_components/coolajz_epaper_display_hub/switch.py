@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -48,6 +49,11 @@ DESCRIPTIONS = (
         mode="manual_ota",
         entity_category=EntityCategory.CONFIG,
     ),
+    EpaperSwitchDescription(
+        key="wifi_full_scan",
+        mode="wifi_full_scan",
+        entity_category=EntityCategory.CONFIG,
+    ),
 )
 
 SHOW_WEATHER_DESCRIPTION = EpaperSwitchDescription(
@@ -81,6 +87,8 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
             return record.automatic_ota_enabled
         if self.entity_description.mode == "manual_ota":
             return record.manual_ota_requested
+        if self.entity_description.mode == "wifi_full_scan":
+            return record.wifi_full_scan_requested
         if self.entity_description.mode == "show_weather":
             return record.show_weather
         return bool(record.desired.get(DESIRED_SHOW_BATTERY_VOLTAGE))
@@ -95,8 +103,21 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
                 changed = record.enqueue_ota_command(
                     generate_nonce(), OTA_COMMAND_SOURCE_MANUAL
                 )
-            elif not value:
-                changed = record.cancel_undelivered_manual_ota()
+            elif not value and record.manual_ota_requested:
+                self.async_write_ha_state()
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="command_waiting_for_device",
+                )
+        elif self.entity_description.mode == "wifi_full_scan":
+            if value and not record.wifi_full_scan_requested:
+                changed = record.enqueue_wifi_full_scan_command(generate_nonce())
+            elif not value and record.wifi_full_scan_requested:
+                self.async_write_ha_state()
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="command_waiting_for_device",
+                )
         elif self.entity_description.mode == "show_weather":
             changed = record.update_show_weather(value)
         else:

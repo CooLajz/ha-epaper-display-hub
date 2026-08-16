@@ -20,31 +20,42 @@ def _record() -> DeviceRecord:
     return DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())
 
 
-def test_manual_ota_can_be_enabled_and_cancelled_before_delivery() -> None:
+def test_manual_ota_stays_requested_until_acknowledgement() -> None:
     record = _record()
 
     assert record.enqueue_ota_command("manual-1", OTA_COMMAND_SOURCE_MANUAL)
     assert record.manual_ota_requested
-    assert record.cancel_undelivered_manual_ota()
-    assert not record.manual_ota_requested
-    assert record.pending_commands == []
-
-
-def test_manual_switch_turns_off_after_delivery_but_command_repeats_until_ack() -> None:
-    record = _record()
-    record.enqueue_ota_command("manual-1", OTA_COMMAND_SOURCE_MANUAL)
-
     assert record.commands_for_delivery() == [
         {"id": "manual-1", "type": "ota_check"}
     ]
     assert record.mark_commands_delivered({"manual-1"})
-    assert not record.manual_ota_requested
-    assert not record.cancel_undelivered_manual_ota()
+    assert record.manual_ota_requested
     assert record.commands_for_delivery() == [
         {"id": "manual-1", "type": "ota_check"}
     ]
     assert record.acknowledge_commands({"manual-1"})
+    assert not record.manual_ota_requested
     assert record.commands_for_delivery() == []
+
+
+def test_wifi_full_scan_and_ota_can_wait_for_acknowledgement_together() -> None:
+    record = _record()
+
+    assert record.enqueue_ota_command("manual-1", OTA_COMMAND_SOURCE_MANUAL)
+    assert record.enqueue_wifi_full_scan_command("wifi-1")
+    assert not record.enqueue_wifi_full_scan_command("wifi-duplicate")
+    assert record.wifi_full_scan_requested
+    assert record.commands_for_delivery() == [
+        {"id": "manual-1", "type": "ota_check"},
+        {"id": "wifi-1", "type": "wifi_full_scan"},
+    ]
+
+    assert record.mark_commands_delivered({"manual-1", "wifi-1"})
+    assert record.manual_ota_requested
+    assert record.wifi_full_scan_requested
+    assert record.acknowledge_commands({"wifi-1"})
+    assert record.manual_ota_requested
+    assert not record.wifi_full_scan_requested
 
 
 def test_automatic_ota_runs_at_local_time_and_is_deduplicated_per_day() -> None:
@@ -153,7 +164,7 @@ def test_ota_settings_and_delivered_queue_survive_storage_round_trip() -> None:
 
     assert restored.automatic_ota_enabled
     assert restored.ota_check_time == "04:15:00"
-    assert not restored.manual_ota_requested
+    assert restored.manual_ota_requested
     assert restored.commands_for_delivery() == [
         {"id": "manual-1", "type": "ota_check"}
     ]

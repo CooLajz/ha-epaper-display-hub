@@ -116,6 +116,11 @@
       }
     }
   },
+  "exceptions": {
+    "command_waiting_for_device": {
+      "message": "This one-time action can no longer be cancelled. The switch will turn off after the device confirms completion."
+    }
+  },
   "entity": {
     "sensor": {
       "battery": {"name": "Battery"},
@@ -150,7 +155,8 @@
       "show_battery_voltage": {"name": "Show battery voltage"},
       "show_weather": {"name": "Show weather"},
       "auto_ota": {"name": "Automatic OTA"},
-      "ota_next_wake": {"name": "OTA on next wake"}
+      "ota_next_wake": {"name": "OTA on next wake"},
+      "wifi_full_scan": {"name": "Find strongest Wi-Fi AP once"}
     },
     "number": {
       "partial_refreshes_between_full": {"name": "Partial refreshes between full refreshes"}
