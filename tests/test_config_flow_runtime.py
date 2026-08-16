@@ -89,6 +89,7 @@ def test_measurements_use_semantic_display_precision() -> None:
     assert precision["battery_voltage"] == 2
     assert precision["last_planned_interval"] == 0
     assert precision["active_runtime"] == 0
+    assert precision["partial_refresh_count"] == 0
     assert precision["rssi"] == 0
     assert precision["board_temperature"] == 1
     assert precision["board_humidity"] == 0
@@ -231,7 +232,7 @@ async def test_pair_remove_unload_and_reload(
 
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,
-        {"telemetry": {}, "firmware_version": "1.0.0"},
+        {"telemetry": {"partial_refresh_count": 4}, "firmware_version": "1.0.0"},
         {},
     )
     assert response["revision"] == record.desired_revision
@@ -239,6 +240,13 @@ async def test_pair_remove_unload_and_reload(
     assert datetime.fromisoformat(response["server_time"]).tzinfo is not None
     assert datetime.fromisoformat(response["next_wake_at"]).tzinfo is not None
     assert entry.runtime_data.coordinator.is_device_available(record.device_id)
+    assert record.last_entity_data["partial_refresh_count"] == 4
+    assert (
+        entry.runtime_data.coordinator.device_data(record.device_id)[
+            "partial_refresh_count"
+        ]
+        == 4
+    )
 
     subentry_id = next(iter(entry.subentries))
     hass.config_entries.async_remove_subentry(entry, subentry_id)

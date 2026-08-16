@@ -88,6 +88,13 @@ SENSORS = (
         suggested_display_precision=0,
     ),
     EpaperSensorDescription(
+        key="partial_refresh_count",
+        telemetry_key="partial_refresh_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+    ),
+    EpaperSensorDescription(
         key="rssi",
         telemetry_key="rssi",
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,

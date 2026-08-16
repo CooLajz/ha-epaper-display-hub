@@ -28,6 +28,7 @@ _PERSISTED_NUMERIC_TELEMETRY = {
     "battery_voltage",
     "rssi",
     "active_runtime_ms",
+    "partial_refresh_count",
     "board_temperature",
     "board_humidity",
 }
@@ -219,6 +220,7 @@ def telemetry_value(data: Mapping[str, Any], key: str) -> Any:
         "battery_voltage",
         "rssi",
         "active_runtime_ms",
+        "partial_refresh_count",
         "board_temperature",
         "board_humidity",
         "last_planned_interval_seconds",

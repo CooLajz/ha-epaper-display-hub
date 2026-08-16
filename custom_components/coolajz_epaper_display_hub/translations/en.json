@@ -125,6 +125,7 @@
       "next_wake_at": {"name": "Next wake"},
       "last_planned_interval": {"name": "Last planned interval"},
       "active_runtime": {"name": "Last active runtime"},
+      "partial_refresh_count": {"name": "Partial refresh count"},
       "rssi": {"name": "RSSI"},
       "firmware_version": {"name": "Firmware version"},
       "last_ota_check": {"name": "Last OTA check"},
