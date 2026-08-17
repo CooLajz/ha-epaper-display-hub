@@ -563,15 +563,18 @@ determine it. The installed version continues to use the top-level `firmware_ver
 These diagnostic values describe the last completed attempt; they do not replace the
 durable command acknowledgement.
 
-Independently of Hub OTA switches and commands, firmware performs one metadata-only
-version lookup after the first authenticated check-in of each new local calendar day.
-The local date is taken from the signed timezone-aware `server_time`; firmware does not
-maintain its own timezone rules. The attempt date is persisted before the lookup, so a
-failed lookup is not retried until the next local day. A successful lookup stores the
-server metadata version in `available_firmware_version` without installing it. A failed
-lookup stores the literal diagnostic value `Chyba kontroly`. After a successful
-commanded installation, firmware immediately replaces this value with the installed
-version so stale availability is not reported until the next daily lookup.
+Independently of Hub OTA switches and commands, firmware performs a metadata-only
+version lookup before the first check-in after a normal boot or reset, so the result is
+included in that request. A timer wake from deep sleep performs another lookup only
+after its first authenticated check-in of a new local calendar day. The local date is
+taken from the signed timezone-aware `server_time`; firmware does not maintain its own
+timezone rules. The attempt date is persisted before the daily lookup, so a failed
+lookup is not retried until the next local day. A successful lookup stores the server
+metadata version in `available_firmware_version` without installing it. A failed lookup
+stores the literal diagnostic value `Chyba kontroly`. A restart caused by a commanded
+OTA installation does not perform another lookup: firmware immediately reports the
+newly installed version instead. Restarts used by `wifi_full_scan` also defer the lookup
+to the next regular timer wake.
 
 Enabling automatic OTA marks the current Home Assistant local day as already evaluated.
 The Hub may create the first automatic `ota_check` command only on the following day at
