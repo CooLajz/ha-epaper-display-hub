@@ -75,7 +75,9 @@ remains on only until the Hub includes the latest revision in a signed check-in
 response. The applied revision remains tracked separately for protocol diagnostics.
 
 The hub calculates the nearest future schedule boundary in Home Assistant's timezone
-and returns `server_time`, `next_wake_at`, and authoritative `sleep_seconds`. The
+and applies the display's optional −60 to +60 second wake correction without shifting
+the underlying schedule. It then returns `server_time`, `next_wake_at`, and
+authoritative `sleep_seconds`. The
 **Next wake** and **Last planned interval** sensors expose the same persisted plan;
 availability remains true until two minutes after the expected wake time.
 

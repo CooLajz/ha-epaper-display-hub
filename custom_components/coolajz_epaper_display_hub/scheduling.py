@@ -8,6 +8,9 @@ from typing import Any
 
 from .const import (
     DEFAULT_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+    MAX_WAKE_TIME_CORRECTION_SECONDS,
+    MIN_WAKE_TIME_CORRECTION_SECONDS,
     WAKE_INTERVAL_OPTIONS,
 )
 
@@ -30,11 +33,32 @@ def normalize_wake_schedule(value: Any) -> dict[str, int]:
     return result
 
 
+def normalize_wake_time_correction(value: Any) -> int:
+    """Return a safe signed correction for a planned wake boundary."""
+    if isinstance(value, bool):
+        return DEFAULT_WAKE_TIME_CORRECTION_SECONDS
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_WAKE_TIME_CORRECTION_SECONDS
+    if not numeric.is_integer():
+        return DEFAULT_WAKE_TIME_CORRECTION_SECONDS
+    correction = int(numeric)
+    if not (
+        MIN_WAKE_TIME_CORRECTION_SECONDS
+        <= correction
+        <= MAX_WAKE_TIME_CORRECTION_SECONDS
+    ):
+        return DEFAULT_WAKE_TIME_CORRECTION_SECONDS
+    return correction
+
+
 def next_wake(
     now: datetime,
     timezone: tzinfo,
     schedule: Any,
     *,
+    correction_seconds: Any = DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
     earlier_override: datetime | None = None,
 ) -> tuple[datetime, int]:
     """Find the next boundary, treating a late-cycle check-in as already served."""
@@ -67,6 +91,11 @@ def next_wake(
         candidate_utc += timedelta(minutes=1)
     if scheduled is None:
         raise ValueError("wake schedule has no future boundary")
+
+    correction = normalize_wake_time_correction(correction_seconds)
+    scheduled = (
+        scheduled.astimezone(UTC) + timedelta(seconds=correction)
+    ).astimezone(timezone)
 
     if earlier_override is not None:
         if earlier_override.tzinfo is None:

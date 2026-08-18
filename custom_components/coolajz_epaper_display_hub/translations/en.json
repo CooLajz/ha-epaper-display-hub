@@ -51,6 +51,7 @@
             "bottom_right_unit": "Third value unit override",
             "weather": "Weather entity",
             "extra_humidity": "Additional humidity entity",
+            "wake_time_correction_seconds": "Wake time correction (− earlier / + later, seconds)",
             "ota_check_time": "Daily OTA check time",
             "wake_interval_00": "00:00–00:59 wake interval (minutes)",
             "wake_interval_01": "01:00–01:59 wake interval (minutes)",
@@ -148,7 +149,7 @@
       "board_humidity": {"name": "Humidity"}
     },
     "binary_sensor": {
-      "available": {"name": "Available"},
+      "available": {"name": "Availability"},
       "configuration_pending": {"name": "Configuration pending"}
     },
     "switch": {

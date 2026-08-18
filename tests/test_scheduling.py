@@ -8,6 +8,7 @@ import pytest
 from custom_components.coolajz_epaper_display_hub.scheduling import (
     next_wake,
     normalize_wake_schedule,
+    normalize_wake_time_correction,
 )
 
 PRAGUE = ZoneInfo("Europe/Prague")
@@ -82,6 +83,43 @@ def test_seconds_before_boundary_do_not_trigger_an_immediate_second_refresh() ->
     assert sleep_seconds == 60 * 60 + 20
 
 
+@pytest.mark.parametrize(
+    ("correction", "expected_wake", "expected_sleep"),
+    [
+        (-45, "2026-08-15T22:59:15+02:00", 2532),
+        (45, "2026-08-15T23:00:45+02:00", 2622),
+    ],
+)
+def test_wake_correction_offsets_the_selected_boundary(
+    correction: int, expected_wake: str, expected_sleep: int
+) -> None:
+    """A signed device correction moves the result without changing its slot."""
+    schedule = _schedule()
+    schedule["23"] = 15
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 22, 17, 3, tzinfo=PRAGUE),
+        PRAGUE,
+        schedule,
+        correction_seconds=correction,
+    )
+
+    assert planned.isoformat() == expected_wake
+    assert sleep_seconds == expected_sleep
+
+
+def test_early_negative_correction_does_not_accumulate() -> None:
+    """A wake at its corrected time advances to the next base schedule slot."""
+    planned, sleep_seconds = next_wake(
+        datetime(2026, 8, 15, 0, 9, 40, tzinfo=PRAGUE),
+        PRAGUE,
+        _schedule(10),
+        correction_seconds=-20,
+    )
+
+    assert planned.isoformat() == "2026-08-15T00:19:40+02:00"
+    assert sleep_seconds == 10 * 60
+
+
 def test_half_interval_uses_real_gap_across_schedule_transition() -> None:
     """The threshold follows the interval ending at a boundary, not the next hour."""
     schedule = _schedule()
@@ -138,6 +176,16 @@ def test_schedule_is_completed_and_rejects_unsupported_intervals() -> None:
     assert normalized["1"] == 30
     assert normalized["2"] == 5
     assert len(normalized) == 24
+
+
+@pytest.mark.parametrize("value", (-61, 61, 1.5, True, "invalid", None))
+def test_invalid_wake_correction_falls_back_to_zero(value: object) -> None:
+    assert normalize_wake_time_correction(value) == 0
+
+
+@pytest.mark.parametrize("value", (-60, 0, 60, "15", 20.0))
+def test_valid_wake_correction_is_preserved(value: object) -> None:
+    assert normalize_wake_time_correction(value) == int(float(value))
 
 
 def test_naive_times_are_rejected() -> None:

@@ -164,6 +164,7 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             now,
             timezone,
             record.wake_schedule,
+            correction_seconds=record.wake_time_correction_seconds,
         )
         record.last_contact_at = now.isoformat()
         record.next_wake_at = planned_wake.isoformat()

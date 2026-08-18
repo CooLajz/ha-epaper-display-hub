@@ -45,7 +45,10 @@ from .const import (
     CONF_TRANSPORT_SECURITY,
     DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
+    DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
     DOMAIN,
+    MAX_WAKE_TIME_CORRECTION_SECONDS,
+    MIN_WAKE_TIME_CORRECTION_SECONDS,
     OTA_CHECK_TIME,
     PROTOCOL_VERSION,
     SLOT_BOTTOM_LEFT,
@@ -59,6 +62,7 @@ from .const import (
     TRANSPORT_HTTPS_VERIFIED,
     WAKE_INTERVAL_OPTIONS,
     WAKE_SCHEDULE_FIELD_PREFIX,
+    WAKE_TIME_CORRECTION_SECONDS,
 )
 from .models import DeviceRecord, ProtocolError
 from .pairing import (
@@ -160,6 +164,17 @@ def _display_schema(automatic_ota_enabled: bool) -> vol.Schema:
             vol.Optional(SLOT_EXTRA_HUMIDITY): EntitySelector(
                 EntitySelectorConfig(domain="sensor")
             ),
+            vol.Required(
+                WAKE_TIME_CORRECTION_SECONDS,
+                default=DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=MIN_WAKE_TIME_CORRECTION_SECONDS,
+                    max=MAX_WAKE_TIME_CORRECTION_SECONDS,
+                    step=1,
+                    mode=NumberSelectorMode.BOX,
+                )
+            ),
             **ota_time_field,
             **_wake_schedule_schema(),
         }
@@ -188,10 +203,12 @@ def _suggested_values(
     subentry: Any,
     wake_schedule: Mapping[str, Any],
     ota_check_time: str,
+    wake_time_correction_seconds: int,
 ) -> dict[str, Any]:
     values: dict[str, Any] = {
         CONF_FRIENDLY_NAME: subentry.title,
         OTA_CHECK_TIME: ota_check_time,
+        WAKE_TIME_CORRECTION_SECONDS: wake_time_correction_seconds,
     }
     for hour in range(24):
         values[f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}"] = str(
@@ -409,7 +426,17 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                 record.automatic_ota_enabled,
                 user_input.get(OTA_CHECK_TIME, record.ota_check_time),
             )
-            if configuration_changed or ota_settings_changed:
+            wake_correction_changed = record.update_wake_time_correction(
+                user_input.get(
+                    WAKE_TIME_CORRECTION_SECONDS,
+                    record.wake_time_correction_seconds,
+                )
+            )
+            if (
+                configuration_changed
+                or ota_settings_changed
+                or wake_correction_changed
+            ):
                 await self._runtime.store.async_save()
                 self._runtime.coordinator.async_update_listeners()
             if record.automatic_ota_enabled:
@@ -430,6 +457,7 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
                     subentry,
                     record.wake_schedule,
                     record.ota_check_time,
+                    record.wake_time_correction_seconds,
                 ),
             ),
         )

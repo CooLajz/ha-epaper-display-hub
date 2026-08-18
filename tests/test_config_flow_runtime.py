@@ -49,6 +49,7 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     TRANSPORT_HTTPS_INSECURE,
     TRANSPORT_HTTPS_VERIFIED,
     WAKE_SCHEDULE_FIELD_PREFIX,
+    WAKE_TIME_CORRECTION_SECONDS,
 )
 from custom_components.coolajz_epaper_display_hub.models import (  # noqa: E402
     DeviceRecord,
@@ -110,6 +111,15 @@ def test_pending_configuration_is_not_a_problem_device_class() -> None:
     assert pending.device_class is None
 
 
+def test_availability_uses_inverted_problem_semantics() -> None:
+    """An available or intentionally sleeping display is OK, not a problem."""
+    availability = next(
+        item for item in BINARY_SENSOR_DESCRIPTIONS if item.key == "available"
+    )
+    assert availability.mode == "unavailable"
+    assert availability.device_class == "problem"
+
+
 def test_text_value_types_are_available_for_any_home_assistant_entity() -> None:
     """Text templates must be selectable for non-numeric entity states."""
     assert "state" in VALUE_TYPES
@@ -125,10 +135,12 @@ def test_device_switches_are_not_in_reconfigure_form() -> None:
     assert DESIRED_PARTIAL_REFRESHES not in disabled_keys
     assert "auto_ota" not in disabled_keys
     assert OTA_CHECK_TIME not in disabled_keys
+    assert WAKE_TIME_CORRECTION_SECONDS in disabled_keys
     assert DESIRED_SHOW_BATTERY_VOLTAGE not in enabled_keys
     assert DESIRED_PARTIAL_REFRESHES not in enabled_keys
     assert "auto_ota" not in enabled_keys
     assert OTA_CHECK_TIME in enabled_keys
+    assert WAKE_TIME_CORRECTION_SECONDS in enabled_keys
 
 
 def test_partial_refresh_number_has_device_range() -> None:
@@ -140,10 +152,13 @@ def test_partial_refresh_number_has_device_range() -> None:
 
 
 def _reconfigure_input(
-    *, first_hour_interval: int = DEFAULT_WAKE_SCHEDULE["0"]
+    *,
+    first_hour_interval: int = DEFAULT_WAKE_SCHEDULE["0"],
+    wake_time_correction_seconds: int = 0,
 ) -> dict[str, Any]:
     return {
         CONF_FRIENDLY_NAME: "Test display",
+        WAKE_TIME_CORRECTION_SECONDS: wake_time_correction_seconds,
         **{
             f"{WAKE_SCHEDULE_FIELD_PREFIX}{hour:02d}": str(
                 first_hour_interval
@@ -284,6 +299,24 @@ async def test_pair_remove_unload_and_reload(
     assert record.wake_schedule["0"] == 15
     assert record.desired_revision == original_revision + 2
     assert registry.async_get_entity_id("switch", DOMAIN, weather_unique_id) is None
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DISPLAY),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        _reconfigure_input(
+            first_hour_interval=15,
+            wake_time_correction_seconds=-30,
+        ),
+    )
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert record.wake_time_correction_seconds == -30
+    assert record.desired_revision == original_revision + 2
 
     response = await entry.runtime_data.coordinator.async_process_checkin(
         record,

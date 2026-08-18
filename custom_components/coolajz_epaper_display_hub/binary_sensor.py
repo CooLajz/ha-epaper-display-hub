@@ -30,8 +30,8 @@ class EpaperBinaryDescription(BinarySensorEntityDescription):
 DESCRIPTIONS = (
     EpaperBinaryDescription(
         key="available",
-        mode="available",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        mode="unavailable",
+        device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     EpaperBinaryDescription(
@@ -59,8 +59,8 @@ class EpaperBinarySensor(EpaperDisplayEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return the requested diagnostic state."""
-        if self.entity_description.mode == "available":
-            return self.coordinator.is_device_available(self.device_id)
+        if self.entity_description.mode == "unavailable":
+            return not self.coordinator.is_device_available(self.device_id)
         record = self.entry.runtime_data.store.devices.get(self.device_id)
         return bool(record and record.configuration_pending)
 

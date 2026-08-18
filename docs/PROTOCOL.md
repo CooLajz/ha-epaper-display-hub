@@ -466,6 +466,14 @@ configured for the current hour. A check-in at 22:17 with a 60-minute interval f
 hour 22 and a 15-minute interval for hour 23 returns 23:00, followed by 23:15, 23:30,
 and 23:45.
 
+Each display may configure a Hub-only signed wake correction from −60 through +60
+seconds. The Hub first selects the unmodified valid schedule boundary and then applies
+the correction to `next_wake_at` and `sleep_seconds`. A negative value wakes the device
+earlier and a positive value later. Boundary selection during the following check-in
+still uses the unmodified 24-hour schedule, so the correction never accumulates from
+cycle to cycle. Firmware receives only the final signed values and needs no correction
+field of its own.
+
 `server_time` and `next_wake_at` are timezone-aware ISO 8601 values in the Home
 Assistant timezone. `sleep_seconds` is authoritative and is measured from response
 creation. The response-level `revision` identifies the desired configuration used by

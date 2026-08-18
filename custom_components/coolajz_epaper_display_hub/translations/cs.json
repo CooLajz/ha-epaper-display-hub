@@ -51,6 +51,7 @@
             "bottom_right_unit": "Vlastní jednotka třetí hodnoty",
             "weather": "Entita počasí",
             "extra_humidity": "Entita doplňkové vlhkosti",
+            "wake_time_correction_seconds": "Korekce času probuzení (− dříve / + později, sekundy)",
             "ota_check_time": "Čas denní OTA kontroly",
             "wake_interval_00": "00:00–00:59 – interval probouzení (minuty)",
             "wake_interval_01": "01:00–01:59 – interval probouzení (minuty)",
@@ -148,7 +149,7 @@
       "board_humidity": {"name": "Vlhkost"}
     },
     "binary_sensor": {
-      "available": {"name": "Dostupný"},
+      "available": {"name": "Dostupnost"},
       "configuration_pending": {"name": "Čekající konfigurace"}
     },
     "switch": {

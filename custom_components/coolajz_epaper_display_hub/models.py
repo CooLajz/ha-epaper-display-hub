@@ -14,6 +14,7 @@ from .const import (
     DEFAULT_DESIRED,
     DEFAULT_OTA_CHECK_TIME,
     DEFAULT_WAKE_SCHEDULE,
+    DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
     DESIRED_PARTIAL_REFRESHES,
     MAX_PARTIAL_REFRESHES,
     MIN_PARTIAL_REFRESHES,
@@ -26,7 +27,7 @@ from .const import (
     VALUE_SLOTS,
     WIFI_FULL_SCAN_COMMAND_TYPE,
 )
-from .scheduling import normalize_wake_schedule
+from .scheduling import normalize_wake_schedule, normalize_wake_time_correction
 
 MAC_RE = re.compile(r"^[0-9A-F]{12}$")
 COLON_MAC_RE = re.compile(r"^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$")
@@ -137,6 +138,7 @@ class DeviceRecord:
     wake_schedule: dict[str, int] = field(
         default_factory=lambda: deepcopy(DEFAULT_WAKE_SCHEDULE)
     )
+    wake_time_correction_seconds: int = DEFAULT_WAKE_TIME_CORRECTION_SECONDS
     desired_revision: int = 1
     reported: dict[str, Any] = field(default_factory=dict)
     reported_revision: int = 0
@@ -173,6 +175,12 @@ class DeviceRecord:
             secret=str(data["secret"]),
             desired=desired,
             wake_schedule=normalize_wake_schedule(data.get("wake_schedule")),
+            wake_time_correction_seconds=normalize_wake_time_correction(
+                data.get(
+                    "wake_time_correction_seconds",
+                    DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+                )
+            ),
             desired_revision=desired_revision,
             reported=dict(data.get("reported", {})),
             reported_revision=max(0, int(data.get("reported_revision", 0))),
@@ -218,6 +226,7 @@ class DeviceRecord:
             "secret": self.secret,
             "desired": self.desired,
             "wake_schedule": self.wake_schedule,
+            "wake_time_correction_seconds": self.wake_time_correction_seconds,
             "desired_revision": self.desired_revision,
             "reported": self.reported,
             "reported_revision": self.reported_revision,
@@ -373,6 +382,14 @@ class DeviceRecord:
         if self.show_weather == enabled:
             return False
         self.show_weather = enabled
+        return True
+
+    def update_wake_time_correction(self, value: Any) -> bool:
+        """Update the Hub-only signed offset applied to future wake times."""
+        normalized = normalize_wake_time_correction(value)
+        if self.wake_time_correction_seconds == normalized:
+            return False
+        self.wake_time_correction_seconds = normalized
         return True
 
     def schedule_automatic_ota(self, local_now: datetime, command_id: str) -> bool:
