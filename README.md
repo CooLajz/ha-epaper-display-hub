@@ -67,8 +67,11 @@ When a weather entity is configured, the display exposes a per-device
 **Show weather** switch. Turning it off keeps the selected entity configured but
 suppresses weather content in subsequent check-ins; turning it on restores delivery.
 
-Desired firmware configuration currently includes battery voltage display and the
-partial-refresh count. The 24-hour wake schedule is owned and evaluated by the Hub.
+Desired firmware configuration currently includes battery voltage display, the
+partial-refresh count, and per-display suspension of e-ink refresh. While refresh is
+suspended, a separate 5–300 minute number entity controls telemetry-only wake cycles;
+the firmware still checks in and reports sensors but preserves the existing image.
+The 24-hour wake schedule is owned and evaluated by the Hub.
 The desired revision advances immediately in Home Assistant, but a sleeping device
 may not apply it until a later wake. The **Configuration pending** binary sensor
 remains on only until the Hub includes the latest revision in a signed check-in
@@ -80,6 +83,8 @@ the underlying schedule. It then returns `server_time`, `next_wake_at`, and
 authoritative `sleep_seconds`. The
 **Next wake** and **Last planned interval** sensors expose the same persisted plan;
 availability remains true until two minutes after the expected wake time.
+Turning refresh suspension off takes effect at the next telemetry wake and restores
+the standard 24-hour schedule and display refresh immediately in that cycle.
 
 OTA is also orchestrated exclusively by the Hub. Each display exposes an
 **Automatic OTA** switch and an independent **OTA on next wake** switch. When

@@ -314,7 +314,8 @@ response_signature = b9e56fb4276c61ab2f737b8ba3b00e1ed4860c43ea8cc015cb70eb81012
     "applied": true,
     "values": {
       "show_battery_voltage": true,
-      "partial_refreshes_between_full": 10
+      "partial_refreshes_between_full": 10,
+      "suspend_display_refresh": false
     }
   },
   "telemetry": {
@@ -365,7 +366,8 @@ one-time commands. A bad source entity affects only its own item:
     "revision": 5,
     "values": {
       "show_battery_voltage": true,
-      "partial_refreshes_between_full": 10
+      "partial_refreshes_between_full": 10,
+      "suspend_display_refresh": false
     }
   },
   "content": {
@@ -440,8 +442,8 @@ device_id = AA:BB:CC:DD:EE:FF
 timestamp = 1786825023
 nonce = AAAAAAAAAAAAAAAAAAAAAA
 ota_command_id = ota-check-000001
-response_body = {"commands":[{"id":"ota-check-000001","type":"ota_check"}],"content":{"bottom_left":{"display_value":null,"valid":false},"bottom_right":{"display_value":null,"valid":false},"extra_humidity":{"display_value":"58","label":"Outside humidity","type":"humidity","unit":"%","valid":true},"main":{"display_value":"24.1","label":"Living room","type":"temperature","unit":"°C","valid":true},"weather":{"condition":"partlycloudy","valid":true}},"desired_config":{"revision":5,"values":{"partial_refreshes_between_full":10,"show_battery_voltage":true}},"next_wake_at":"2026-08-15T23:00:00+02:00","protocol_version":1,"revision":5,"server_time":"2026-08-15T22:17:03+02:00","sleep_seconds":2577}
-response_signature = 8bb68eb296c73a72db541daea2501676c49fae554029d50c9fc73b8c5c354d52
+response_body = {"commands":[{"id":"ota-check-000001","type":"ota_check"}],"content":{"bottom_left":{"display_value":null,"valid":false},"bottom_right":{"display_value":null,"valid":false},"extra_humidity":{"display_value":"58","label":"Outside humidity","type":"humidity","unit":"%","valid":true},"main":{"display_value":"24.1","label":"Living room","type":"temperature","unit":"°C","valid":true},"weather":{"condition":"partlycloudy","valid":true}},"desired_config":{"revision":5,"values":{"partial_refreshes_between_full":10,"show_battery_voltage":true,"suspend_display_refresh":false}},"next_wake_at":"2026-08-15T23:00:00+02:00","protocol_version":1,"revision":5,"server_time":"2026-08-15T22:17:03+02:00","sleep_seconds":2577}
+response_signature = 33a8cd3d21873b21a574fa2e91d4964cd044d90983afda7516b961a8d72ff6a7
 ```
 
 Both implementations must build or parse the complete response and reproduce this
@@ -518,6 +520,22 @@ check-in. This avoids losing a command when a response or display refresh fails.
 the display's Home Assistant number entity. It is not part of the display config-flow
 form. A change advances `desired_config.revision` like any other firmware-facing
 desired value.
+
+`suspend_display_refresh` is a boolean firmware-facing desired value controlled by the
+per-display **Do not refresh display** switch. While true, firmware still performs the
+authenticated check-in, reports all available telemetry, applies configuration and
+commands, and enters deep sleep using the signed response, but it must not power or
+refresh the e-ink panel during the normal cycle. OTA may continue, but its informational
+screen is also suppressed. Pairing, unpairing, and other recovery UI remain outside
+this normal paired-cycle rule.
+
+The Hub-owned `suspended_refresh_interval_minutes` setting accepts whole minutes from
+5 through 300 and is not sent in `desired_config`. While refresh is suspended, the Hub
+uses that relative interval instead of the 24-hour boundary schedule when calculating
+`next_wake_at` and `sleep_seconds`; the configured wake correction still applies. When
+the switch is turned off, the device learns this at its next scheduled check-in,
+refreshes the display in that same cycle, and receives its next wake from the standard
+24-hour schedule.
 
 ## Hub-owned OTA orchestration
 

@@ -37,6 +37,11 @@ def test_pairing_translations_exist_in_czech_and_english() -> None:
         assert "insecure_warning" not in display["step"]
         assert "command_waiting_for_device" in payload["exceptions"]
         assert "wifi_full_scan" in payload["entity"]["switch"]
+        assert "suspend_display_refresh" in payload["entity"]["switch"]
+        assert (
+            "suspended_refresh_interval_minutes"
+            in payload["entity"]["number"]
+        )
         assert (
             "wake_time_correction_seconds"
             in display["step"]["reconfigure"]["data"]

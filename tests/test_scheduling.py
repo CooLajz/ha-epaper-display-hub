@@ -7,8 +7,10 @@ import pytest
 
 from custom_components.coolajz_epaper_display_hub.scheduling import (
     next_wake,
+    normalize_suspended_refresh_interval,
     normalize_wake_schedule,
     normalize_wake_time_correction,
+    suspended_refresh_next_wake,
 )
 
 PRAGUE = ZoneInfo("Europe/Prague")
@@ -186,6 +188,28 @@ def test_invalid_wake_correction_falls_back_to_zero(value: object) -> None:
 @pytest.mark.parametrize("value", (-60, 0, 60, "15", 20.0))
 def test_valid_wake_correction_is_preserved(value: object) -> None:
     assert normalize_wake_time_correction(value) == int(float(value))
+
+
+@pytest.mark.parametrize("value", (4, 301, 10.5, True, "invalid", None))
+def test_invalid_suspended_refresh_interval_uses_default(value: object) -> None:
+    assert normalize_suspended_refresh_interval(value) == 60
+
+
+@pytest.mark.parametrize("value", (5, 60, 300, "15", 20.0))
+def test_valid_suspended_refresh_interval_is_preserved(value: object) -> None:
+    assert normalize_suspended_refresh_interval(value) == int(float(value))
+
+
+def test_suspended_refresh_uses_relative_interval_and_wake_correction() -> None:
+    planned, sleep_seconds = suspended_refresh_next_wake(
+        datetime(2026, 8, 15, 22, 17, 3, tzinfo=PRAGUE),
+        PRAGUE,
+        120,
+        correction_seconds=-30,
+    )
+
+    assert planned.isoformat() == "2026-08-16T00:16:33+02:00"
+    assert sleep_seconds == 120 * 60 - 30
 
 
 def test_naive_times_are_rejected() -> None:

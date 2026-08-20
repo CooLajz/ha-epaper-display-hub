@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     AVAILABILITY_TOLERANCE,
+    DESIRED_SUSPEND_DISPLAY_REFRESH,
     PROTOCOL_VERSION,
 )
 from .models import (
@@ -22,7 +23,7 @@ from .models import (
     optional_number,
     retain_active_runtime,
 )
-from .scheduling import next_wake
+from .scheduling import next_wake, suspended_refresh_next_wake
 from .security import generate_nonce
 from .store import HubStore
 
@@ -160,12 +161,20 @@ class HubCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             (response_time or datetime.now(UTC)).astimezone(UTC).replace(microsecond=0)
         )
         timezone = dt_util.get_time_zone(self.hass.config.time_zone) or UTC
-        planned_wake, sleep_seconds = next_wake(
-            now,
-            timezone,
-            record.wake_schedule,
-            correction_seconds=record.wake_time_correction_seconds,
-        )
+        if bool(record.desired.get(DESIRED_SUSPEND_DISPLAY_REFRESH)):
+            planned_wake, sleep_seconds = suspended_refresh_next_wake(
+                now,
+                timezone,
+                record.suspended_refresh_interval_minutes,
+                correction_seconds=record.wake_time_correction_seconds,
+            )
+        else:
+            planned_wake, sleep_seconds = next_wake(
+                now,
+                timezone,
+                record.wake_schedule,
+                correction_seconds=record.wake_time_correction_seconds,
+            )
         record.last_contact_at = now.isoformat()
         record.next_wake_at = planned_wake.isoformat()
         record.last_planned_interval_seconds = sleep_seconds

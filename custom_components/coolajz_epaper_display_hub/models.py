@@ -13,6 +13,7 @@ from typing import Any
 from .const import (
     DEFAULT_DESIRED,
     DEFAULT_OTA_CHECK_TIME,
+    DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES,
     DEFAULT_WAKE_SCHEDULE,
     DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
     DESIRED_PARTIAL_REFRESHES,
@@ -27,7 +28,11 @@ from .const import (
     VALUE_SLOTS,
     WIFI_FULL_SCAN_COMMAND_TYPE,
 )
-from .scheduling import normalize_wake_schedule, normalize_wake_time_correction
+from .scheduling import (
+    normalize_suspended_refresh_interval,
+    normalize_wake_schedule,
+    normalize_wake_time_correction,
+)
 
 MAC_RE = re.compile(r"^[0-9A-F]{12}$")
 COLON_MAC_RE = re.compile(r"^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$")
@@ -139,6 +144,9 @@ class DeviceRecord:
         default_factory=lambda: deepcopy(DEFAULT_WAKE_SCHEDULE)
     )
     wake_time_correction_seconds: int = DEFAULT_WAKE_TIME_CORRECTION_SECONDS
+    suspended_refresh_interval_minutes: int = (
+        DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    )
     desired_revision: int = 1
     reported: dict[str, Any] = field(default_factory=dict)
     reported_revision: int = 0
@@ -179,6 +187,12 @@ class DeviceRecord:
                 data.get(
                     "wake_time_correction_seconds",
                     DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+                )
+            ),
+            suspended_refresh_interval_minutes=normalize_suspended_refresh_interval(
+                data.get(
+                    "suspended_refresh_interval_minutes",
+                    DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES,
                 )
             ),
             desired_revision=desired_revision,
@@ -227,6 +241,9 @@ class DeviceRecord:
             "desired": self.desired,
             "wake_schedule": self.wake_schedule,
             "wake_time_correction_seconds": self.wake_time_correction_seconds,
+            "suspended_refresh_interval_minutes": (
+                self.suspended_refresh_interval_minutes
+            ),
             "desired_revision": self.desired_revision,
             "reported": self.reported,
             "reported_revision": self.reported_revision,
@@ -390,6 +407,14 @@ class DeviceRecord:
         if self.wake_time_correction_seconds == normalized:
             return False
         self.wake_time_correction_seconds = normalized
+        return True
+
+    def update_suspended_refresh_interval(self, value: Any) -> bool:
+        """Update the Hub-only telemetry interval used while refresh is suspended."""
+        normalized = normalize_suspended_refresh_interval(value)
+        if self.suspended_refresh_interval_minutes == normalized:
+            return False
+        self.suspended_refresh_interval_minutes = normalized
         return True
 
     def schedule_automatic_ota(self, local_now: datetime, command_id: str) -> bool:

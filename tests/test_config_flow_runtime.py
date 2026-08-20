@@ -36,6 +36,7 @@ from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     DEFAULT_WAKE_SCHEDULE,
     DESIRED_PARTIAL_REFRESHES,
     DESIRED_SHOW_BATTERY_VOLTAGE,
+    DESIRED_SUSPEND_DISPLAY_REFRESH,
     DEVICE_HEADER,
     DOMAIN,
     NONCE_HEADER,
@@ -57,6 +58,7 @@ from custom_components.coolajz_epaper_display_hub.models import (  # noqa: E402
 )
 from custom_components.coolajz_epaper_display_hub.number import (  # noqa: E402
     EpaperPartialRefreshNumber,
+    EpaperSuspendedRefreshIntervalNumber,
 )
 from custom_components.coolajz_epaper_display_hub.pairing import (  # noqa: E402
     DeviceIdentity,
@@ -75,6 +77,9 @@ from custom_components.coolajz_epaper_display_hub.security import (  # noqa: E40
 from custom_components.coolajz_epaper_display_hub.sensor import (  # noqa: E402
     OPTIONAL_SENSORS,
     SENSORS,
+)
+from custom_components.coolajz_epaper_display_hub.switch import (  # noqa: E402
+    DESCRIPTIONS as SWITCH_DESCRIPTIONS,
 )
 
 IDENTITY = DeviceIdentity("AA:BB:CC:DD:EE:FF", "ESPink 4.2", "ESP32-S3", "1.0.0")
@@ -149,6 +154,23 @@ def test_partial_refresh_number_has_device_range() -> None:
     assert entity.native_min_value == 0
     assert entity.native_max_value == 50
     assert entity.native_step == 1
+
+
+def test_suspended_refresh_interval_has_device_range() -> None:
+    entity = object.__new__(EpaperSuspendedRefreshIntervalNumber)
+
+    assert entity.native_min_value == 5
+    assert entity.native_max_value == 300
+    assert entity.native_step == 1
+
+
+def test_suspend_display_refresh_is_per_device_desired_configuration() -> None:
+    description = next(
+        item
+        for item in SWITCH_DESCRIPTIONS
+        if item.key == DESIRED_SUSPEND_DISPLAY_REFRESH
+    )
+    assert description.mode == "desired_suspend_display_refresh"
 
 
 def _reconfigure_input(
@@ -346,6 +368,22 @@ async def test_pair_remove_unload_and_reload(
             "partial_refresh_count"
         ]
         == 4
+    )
+
+    assert record.update_suspended_refresh_interval(120)
+    assert record.update_desired({DESIRED_SUSPEND_DISPLAY_REFRESH: True})
+    suspended_response = await entry.runtime_data.coordinator.async_process_checkin(
+        record,
+        {"telemetry": {"battery_percent": 79}, "firmware_version": "1.0.0"},
+        {},
+        response_time=datetime(2026, 8, 15, 20, 17, 3, tzinfo=UTC),
+    )
+    assert suspended_response["sleep_seconds"] == 120 * 60 - 30
+    assert (
+        suspended_response["desired_config"]["values"][
+            DESIRED_SUSPEND_DISPLAY_REFRESH
+        ]
+        is True
     )
 
     await entry.runtime_data.coordinator.async_process_checkin(

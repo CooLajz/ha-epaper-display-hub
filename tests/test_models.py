@@ -47,6 +47,7 @@ def test_new_device_default_wake_schedule() -> None:
     assert {record.wake_schedule[str(hour)] for hour in range(21, 23)} == {15}
     assert record.wake_schedule["23"] == 60
     assert record.wake_time_correction_seconds == 0
+    assert record.suspended_refresh_interval_minutes == 60
 
 
 def test_partial_refresh_count_is_limited_to_device_entity_range() -> None:
@@ -313,6 +314,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     }
     assert record.update_show_weather(False)
     assert record.update_wake_time_correction(-35)
+    assert record.update_suspended_refresh_interval(180)
     restored = DeviceRecord.from_dict(record.as_dict())
     assert restored.pending_commands == [{"id": "refresh-1", "type": "ota_check"}]
     assert restored.wake_schedule["22"] == 60
@@ -322,6 +324,7 @@ def test_desired_reported_and_durable_commands_round_trip() -> None:
     assert restored.last_entity_data == record.last_entity_data
     assert not restored.show_weather
     assert restored.wake_time_correction_seconds == -35
+    assert restored.suspended_refresh_interval_minutes == 180
     assert restored.configuration_pending
     assert restored.mark_configuration_delivered(revision)
     assert not restored.configuration_pending

@@ -20,6 +20,7 @@ from .const import (
     CONF_CONTENT,
     CONF_DEVICE_ID,
     DESIRED_SHOW_BATTERY_VOLTAGE,
+    DESIRED_SUSPEND_DISPLAY_REFRESH,
     DOMAIN,
     OTA_COMMAND_SOURCE_MANUAL,
     SLOT_WEATHER,
@@ -39,6 +40,11 @@ DESCRIPTIONS = (
     EpaperSwitchDescription(
         key="show_battery_voltage",
         mode="desired_battery_voltage",
+        entity_category=EntityCategory.CONFIG,
+    ),
+    EpaperSwitchDescription(
+        key=DESIRED_SUSPEND_DISPLAY_REFRESH,
+        mode="desired_suspend_display_refresh",
         entity_category=EntityCategory.CONFIG,
     ),
     EpaperSwitchDescription(
@@ -93,6 +99,8 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
             return record.wifi_full_scan_requested
         if self.entity_description.mode == "show_weather":
             return record.show_weather
+        if self.entity_description.mode == "desired_suspend_display_refresh":
+            return bool(record.desired.get(DESIRED_SUSPEND_DISPLAY_REFRESH))
         return bool(record.desired.get(DESIRED_SHOW_BATTERY_VOLTAGE))
 
     async def _async_set(self, value: bool) -> None:
@@ -130,6 +138,10 @@ class EpaperConfigSwitch(EpaperDisplayEntity, SwitchEntity):
                 )
         elif self.entity_description.mode == "show_weather":
             changed = record.update_show_weather(value)
+        elif self.entity_description.mode == "desired_suspend_display_refresh":
+            changed = record.update_desired(
+                {DESIRED_SUSPEND_DISPLAY_REFRESH: value}
+            )
         else:
             changed = record.update_desired({DESIRED_SHOW_BATTERY_VOLTAGE: value})
         if changed:

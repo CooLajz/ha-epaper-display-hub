@@ -154,13 +154,15 @@
     },
     "switch": {
       "show_battery_voltage": {"name": "Zobrazovat napětí baterie"},
+      "suspend_display_refresh": {"name": "Neaktualizovat displej"},
       "show_weather": {"name": "Zobrazovat počasí"},
       "auto_ota": {"name": "Automatická OTA"},
       "ota_next_wake": {"name": "OTA při příštím probuzení"},
       "wifi_full_scan": {"name": "Jednorázově vyhledat nejsilnější Wi-Fi AP"}
     },
     "number": {
-      "partial_refreshes_between_full": {"name": "Počet partial refreshů mezi full refreshi"}
+      "partial_refreshes_between_full": {"name": "Počet partial refreshů mezi full refreshi"},
+      "suspended_refresh_interval_minutes": {"name": "Interval při neaktualizování displeje"}
     }
   }
 }

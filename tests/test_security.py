@@ -78,6 +78,7 @@ def test_documented_checkin_response_vector() -> None:
                 "values": {
                     "partial_refreshes_between_full": 10,
                     "show_battery_voltage": True,
+                    "suspend_display_refresh": False,
                 },
             },
             "content": {
@@ -111,7 +112,7 @@ def test_documented_checkin_response_vector() -> None:
         body,
     )
     assert sign(secret, canonical) == (
-        "8bb68eb296c73a72db541daea2501676c49fae554029d50c9fc73b8c5c354d52"
+        "33a8cd3d21873b21a574fa2e91d4964cd044d90983afda7516b961a8d72ff6a7"
     )
 
 

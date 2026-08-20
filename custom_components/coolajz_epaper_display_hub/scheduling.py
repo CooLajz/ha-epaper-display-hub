@@ -8,8 +8,11 @@ from typing import Any
 
 from .const import (
     DEFAULT_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES,
     DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+    MAX_SUSPENDED_REFRESH_INTERVAL_MINUTES,
     MAX_WAKE_TIME_CORRECTION_SECONDS,
+    MIN_SUSPENDED_REFRESH_INTERVAL_MINUTES,
     MIN_WAKE_TIME_CORRECTION_SECONDS,
     WAKE_INTERVAL_OPTIONS,
 )
@@ -51,6 +54,45 @@ def normalize_wake_time_correction(value: Any) -> int:
     ):
         return DEFAULT_WAKE_TIME_CORRECTION_SECONDS
     return correction
+
+
+def normalize_suspended_refresh_interval(value: Any) -> int:
+    """Return a safe whole-minute interval for suspended display refreshes."""
+    if isinstance(value, bool):
+        return DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    if not numeric.is_integer():
+        return DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    interval = int(numeric)
+    if not (
+        MIN_SUSPENDED_REFRESH_INTERVAL_MINUTES
+        <= interval
+        <= MAX_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    ):
+        return DEFAULT_SUSPENDED_REFRESH_INTERVAL_MINUTES
+    return interval
+
+
+def suspended_refresh_next_wake(
+    now: datetime,
+    timezone: tzinfo,
+    interval_minutes: Any,
+    *,
+    correction_seconds: Any = DEFAULT_WAKE_TIME_CORRECTION_SECONDS,
+) -> tuple[datetime, int]:
+    """Plan the next telemetry-only wake from a fixed relative interval."""
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    interval = normalize_suspended_refresh_interval(interval_minutes)
+    correction = normalize_wake_time_correction(correction_seconds)
+    sleep_seconds = interval * 60 + correction
+    planned = (now.astimezone(UTC) + timedelta(seconds=sleep_seconds)).astimezone(
+        timezone
+    )
+    return planned.replace(microsecond=0), sleep_seconds
 
 
 def next_wake(
