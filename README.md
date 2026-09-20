@@ -69,8 +69,9 @@ suppresses weather content in subsequent check-ins; turning it on restores deliv
 
 Desired firmware configuration currently includes battery voltage display, the
 partial-refresh count, and per-display suspension of e-ink refresh. While refresh is
-suspended, a separate 5–300 minute number entity controls telemetry-only wake cycles;
-the firmware still checks in and reports sensors but preserves the existing image.
+suspended, a separate 5–300 minute number entity controls telemetry-only wake cycles.
+On entry the firmware clears the panel to white once; later cycles still check in and
+report sensors without powering or refreshing the e-ink panel.
 The 24-hour wake schedule is owned and evaluated by the Hub.
 The desired revision advances immediately in Home Assistant, but a sleeping device
 may not apply it until a later wake. The **Configuration pending** binary sensor

@@ -524,10 +524,12 @@ desired value.
 `suspend_display_refresh` is a boolean firmware-facing desired value controlled by the
 per-display **Do not refresh display** switch. While true, firmware still performs the
 authenticated check-in, reports all available telemetry, applies configuration and
-commands, and enters deep sleep using the signed response, but it must not power or
-refresh the e-ink panel during the normal cycle. OTA may continue, but its informational
-screen is also suppressed. Pairing, unpairing, and other recovery UI remain outside
-this normal paired-cycle rule.
+commands, and enters deep sleep using the signed response. On the transition from false
+to true, firmware must perform one full white refresh to clear the panel and reset its
+partial-refresh state. During later suspended cycles it must not power or refresh the
+e-ink panel. OTA may continue, but its informational screen is also suppressed. Pairing,
+unpairing, and other recovery UI remain outside this normal paired-cycle rule. On the
+transition back to false, the next rendered content must use a full refresh.
 
 The Hub-owned `suspended_refresh_interval_minutes` setting accepts whole minutes from
 5 through 300 and is not sent in `desired_config`. While refresh is suspended, the Hub
