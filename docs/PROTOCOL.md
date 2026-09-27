@@ -378,7 +378,16 @@ one-time commands. A bad source entity affects only its own item:
       "label": "Living room",
       "unit": "°C"
     },
-    "bottom_left": {"valid": false, "display_value": null},
+    "bottom_left": {
+      "valid": false,
+      "display_value": null,
+      "progress": {
+        "valid": true,
+        "value": 68,
+        "min": 0,
+        "max": 100
+      }
+    },
     "weather": {
       "valid": true,
       "condition": "partlycloudy"
@@ -396,6 +405,14 @@ Hub according to the configured decimal precision. Firmware must render this str
 unchanged and must not parse, round, pad, or otherwise reformat it. `type` may select
 the visual template, while `label` and `unit` remain separate display strings. An
 invalid slot uses `null` as its `display_value`.
+
+The optional `progress` object is available only for the second and third configured
+positions. It contains a separately resolved numeric HA state plus a finite `min` and
+`max`, where `max` must be greater than `min`. An unavailable source uses
+`{"valid": false, "value": null, ...}`. Firmware clamps values outside the range
+to an empty or full bar. The progress object does not configure a value slot by
+itself, so a third progress source without a third main value must not switch the
+display from the two-value layout to the three-value layout.
 
 The Hub bounds UTF-8 display data to the firmware contract: 80 bytes for
 `display_value`, 80 bytes for `label`, 24 bytes for `unit`, and 32 bytes for
@@ -442,8 +459,8 @@ device_id = AA:BB:CC:DD:EE:FF
 timestamp = 1786825023
 nonce = AAAAAAAAAAAAAAAAAAAAAA
 ota_command_id = ota-check-000001
-response_body = {"commands":[{"id":"ota-check-000001","type":"ota_check"}],"content":{"bottom_left":{"display_value":null,"valid":false},"bottom_right":{"display_value":null,"valid":false},"extra_humidity":{"display_value":"58","label":"Outside humidity","type":"humidity","unit":"%","valid":true},"main":{"display_value":"24.1","label":"Living room","type":"temperature","unit":"°C","valid":true},"weather":{"condition":"partlycloudy","valid":true}},"desired_config":{"revision":5,"values":{"partial_refreshes_between_full":10,"show_battery_voltage":true,"suspend_display_refresh":false}},"next_wake_at":"2026-08-15T23:00:00+02:00","protocol_version":1,"revision":5,"server_time":"2026-08-15T22:17:03+02:00","sleep_seconds":2577}
-response_signature = 33a8cd3d21873b21a574fa2e91d4964cd044d90983afda7516b961a8d72ff6a7
+response_body = {"commands":[{"id":"ota-check-000001","type":"ota_check"}],"content":{"bottom_left":{"display_value":null,"progress":{"max":100,"min":0,"valid":true,"value":68},"valid":false},"bottom_right":{"display_value":null,"valid":false},"extra_humidity":{"display_value":"58","label":"Outside humidity","type":"humidity","unit":"%","valid":true},"main":{"display_value":"24.1","label":"Living room","type":"temperature","unit":"°C","valid":true},"weather":{"condition":"partlycloudy","valid":true}},"desired_config":{"revision":5,"values":{"partial_refreshes_between_full":10,"show_battery_voltage":true,"suspend_display_refresh":false}},"next_wake_at":"2026-08-15T23:00:00+02:00","protocol_version":1,"revision":5,"server_time":"2026-08-15T22:17:03+02:00","sleep_seconds":2577}
+response_signature = a7cfb66d5e51db85795b3b17bfd8c0612fcbba4df22db7105d5757dfb408d596
 ```
 
 Both implementations must build or parse the complete response and reproduce this

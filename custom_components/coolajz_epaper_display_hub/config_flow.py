@@ -50,6 +50,7 @@ from .const import (
     MAX_WAKE_TIME_CORRECTION_SECONDS,
     MIN_WAKE_TIME_CORRECTION_SECONDS,
     OTA_CHECK_TIME,
+    PROGRESS_SLOTS,
     PROTOCOL_VERSION,
     SLOT_BOTTOM_LEFT,
     SLOT_BOTTOM_RIGHT,
@@ -129,6 +130,27 @@ def _value_slot_schema(prefix: str) -> dict[Any, Any]:
     }
 
 
+def _progress_schema(prefix: str) -> dict[Any, Any]:
+    """Build an optional progress source and its numeric display range."""
+    range_selector = NumberSelectorConfig(
+        min=-1_000_000,
+        max=1_000_000,
+        step=0.1,
+        mode=NumberSelectorMode.BOX,
+    )
+    return {
+        vol.Optional(f"{prefix}_progress_entity"): EntitySelector(
+            EntitySelectorConfig()
+        ),
+        vol.Optional(f"{prefix}_progress_min", default=0): NumberSelector(
+            range_selector
+        ),
+        vol.Optional(f"{prefix}_progress_max", default=100): NumberSelector(
+            range_selector
+        ),
+    }
+
+
 def _wake_schedule_schema() -> dict[Any, Any]:
     """Build one constrained interval selector for every local hour."""
     options = [str(value) for value in WAKE_INTERVAL_OPTIONS]
@@ -157,7 +179,9 @@ def _display_schema(automatic_ota_enabled: bool) -> vol.Schema:
             vol.Required(CONF_FRIENDLY_NAME): TextSelector(),
             **_value_slot_schema(SLOT_MAIN),
             **_value_slot_schema(SLOT_BOTTOM_LEFT),
+            **_progress_schema(SLOT_BOTTOM_LEFT),
             **_value_slot_schema(SLOT_BOTTOM_RIGHT),
+            **_progress_schema(SLOT_BOTTOM_RIGHT),
             vol.Optional(SLOT_WEATHER): EntitySelector(
                 EntitySelectorConfig(domain="weather")
             ),
@@ -184,19 +208,41 @@ def _display_schema(automatic_ota_enabled: bool) -> vol.Schema:
 def _content_from_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
     content: dict[str, Any] = {}
     for slot in (SLOT_MAIN, SLOT_BOTTOM_LEFT, SLOT_BOTTOM_RIGHT):
+        selection: dict[str, Any] = {}
         entity_id = user_input.get(f"{slot}_entity")
         if entity_id:
-            content[slot] = {
-                "entity_id": entity_id,
-                "type": user_input.get(f"{slot}_type", "auto"),
-                "label": user_input.get(f"{slot}_label"),
-                "decimals": int(user_input.get(f"{slot}_decimals", 1)),
-                "unit": user_input.get(f"{slot}_unit"),
+            selection.update(
+                {
+                    "entity_id": entity_id,
+                    "type": user_input.get(f"{slot}_type", "auto"),
+                    "label": user_input.get(f"{slot}_label"),
+                    "decimals": int(user_input.get(f"{slot}_decimals", 1)),
+                    "unit": user_input.get(f"{slot}_unit"),
+                }
+            )
+        progress_entity = user_input.get(f"{slot}_progress_entity")
+        if slot in PROGRESS_SLOTS and progress_entity:
+            selection["progress"] = {
+                "entity_id": progress_entity,
+                "min": float(user_input.get(f"{slot}_progress_min", 0)),
+                "max": float(user_input.get(f"{slot}_progress_max", 100)),
             }
+        if selection:
+            content[slot] = selection
     for slot in (SLOT_WEATHER, SLOT_EXTRA_HUMIDITY):
         if user_input.get(slot):
             content[slot] = user_input[slot]
     return content
+
+
+def _progress_ranges_valid(user_input: Mapping[str, Any]) -> bool:
+    """Require every configured progress source to have an increasing range."""
+    return all(
+        not user_input.get(f"{slot}_progress_entity")
+        or float(user_input.get(f"{slot}_progress_max", 100))
+        > float(user_input.get(f"{slot}_progress_min", 0))
+        for slot in PROGRESS_SLOTS
+    )
 
 
 def _suggested_values(
@@ -221,6 +267,12 @@ def _suggested_values(
             if field in selection and selection[field] is not None:
                 suffix = "entity" if field == "entity_id" else field
                 values[f"{slot}_{suffix}"] = selection[field]
+        progress = selection.get("progress", {})
+        if slot in PROGRESS_SLOTS and isinstance(progress, Mapping):
+            for field in ("entity_id", "min", "max"):
+                if field in progress and progress[field] is not None:
+                    suffix = "entity" if field == "entity_id" else field
+                    values[f"{slot}_progress_{suffix}"] = progress[field]
     for slot in (SLOT_WEATHER, SLOT_EXTRA_HUMIDITY):
         if slot in content:
             values[slot] = content[slot]
@@ -412,6 +464,15 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         if record is None:
             return self.async_abort(reason="unknown_device")
         if user_input is not None:
+            if not _progress_ranges_valid(user_input):
+                return self.async_show_form(
+                    step_id="reconfigure",
+                    data_schema=self.add_suggested_values_to_schema(
+                        _display_schema(record.automatic_ota_enabled),
+                        user_input,
+                    ),
+                    errors={"base": "invalid_progress_range"},
+                )
             content = _content_from_input(user_input)
             stored_content = subentry.data.get(CONF_CONTENT, {})
             content_changed = content != stored_content

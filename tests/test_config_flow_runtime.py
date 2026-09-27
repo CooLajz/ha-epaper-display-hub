@@ -24,7 +24,9 @@ from custom_components.coolajz_epaper_display_hub.binary_sensor import (  # noqa
 )
 from custom_components.coolajz_epaper_display_hub.config_flow import (  # noqa: E402
     VALUE_TYPES,
+    _content_from_input,
     _display_schema,
+    _progress_ranges_valid,
 )
 from custom_components.coolajz_epaper_display_hub.const import (  # noqa: E402
     CHECKIN_PATH,
@@ -129,6 +131,40 @@ def test_text_value_types_are_available_for_any_home_assistant_entity() -> None:
     """Text templates must be selectable for non-numeric entity states."""
     assert "state" in VALUE_TYPES
     assert "text" in VALUE_TYPES
+
+
+def test_second_and_third_value_progress_fields_are_available() -> None:
+    keys = {str(key.schema) for key in _display_schema(False).schema}
+
+    for slot in ("bottom_left", "bottom_right"):
+        assert f"{slot}_progress_entity" in keys
+        assert f"{slot}_progress_min" in keys
+        assert f"{slot}_progress_max" in keys
+
+
+def test_progress_configuration_is_independent_from_third_main_value() -> None:
+    user_input = {
+        "bottom_left_entity": "sensor.temperature",
+        "bottom_left_progress_entity": "sensor.humidity",
+        "bottom_left_progress_min": 0,
+        "bottom_left_progress_max": 100,
+        "bottom_right_progress_entity": "sensor.co2",
+        "bottom_right_progress_min": 600,
+        "bottom_right_progress_max": 2000,
+    }
+
+    content = _content_from_input(user_input)
+
+    assert content["bottom_left"]["progress"] == {
+        "entity_id": "sensor.humidity",
+        "min": 0.0,
+        "max": 100.0,
+    }
+    assert "entity_id" not in content["bottom_right"]
+    assert content["bottom_right"]["progress"]["entity_id"] == "sensor.co2"
+    assert _progress_ranges_valid(user_input)
+    user_input["bottom_right_progress_max"] = 600
+    assert not _progress_ranges_valid(user_input)
 
 
 def test_device_switches_are_not_in_reconfigure_form() -> None:

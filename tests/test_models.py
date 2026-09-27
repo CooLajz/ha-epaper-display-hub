@@ -297,6 +297,73 @@ def test_content_and_weather_normalization_is_fault_isolated() -> None:
     assert invalid_weather["weather"] == {"valid": False, "condition": None}
 
 
+def test_bottom_progress_uses_an_independent_numeric_entity_and_range() -> None:
+    """Progress values are numeric, fault-isolated, and never expose entity IDs."""
+    hass = FakeHass(
+        {
+            "sensor.temperature": FakeState("23.6", {}),
+            "sensor.humidity": FakeState("68", {}),
+            "sensor.co2": FakeState("unavailable", {}),
+        }
+    )
+
+    result = normalize_content(
+        hass,
+        {
+            "bottom_left": {
+                "entity_id": "sensor.temperature",
+                "progress": {
+                    "entity_id": "sensor.humidity",
+                    "min": 0,
+                    "max": 100,
+                },
+            },
+            "bottom_right": {
+                "progress": {
+                    "entity_id": "sensor.co2",
+                    "min": 600,
+                    "max": 2000,
+                }
+            },
+        },
+    )
+
+    assert result["bottom_left"]["progress"] == {
+        "valid": True,
+        "value": 68.0,
+        "min": 0.0,
+        "max": 100.0,
+    }
+    assert result["bottom_right"] == {
+        "valid": False,
+        "display_value": None,
+        "progress": {
+            "valid": False,
+            "value": None,
+            "min": 600.0,
+            "max": 2000.0,
+        },
+    }
+    assert "entity_id" not in result["bottom_left"]["progress"]
+
+
+def test_invalid_stored_progress_range_is_omitted() -> None:
+    result = normalize_content(
+        FakeHass({"sensor.level": FakeState("10", {})}),
+        {
+            "bottom_left": {
+                "progress": {
+                    "entity_id": "sensor.level",
+                    "min": 100,
+                    "max": 100,
+                }
+            }
+        },
+    )
+
+    assert "progress" not in result["bottom_left"]
+
+
 def test_desired_reported_and_durable_commands_round_trip() -> None:
     """Pending status follows applied revision and commands survive storage reload."""
     record = DeviceRecord("AA:BB:CC:DD:EE:FF", generate_secret())

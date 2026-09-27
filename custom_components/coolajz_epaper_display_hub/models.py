@@ -23,6 +23,7 @@ from .const import (
     OTA_COMMAND_SOURCE_MANUAL,
     OTA_COMMAND_TYPE,
     OTA_STATUS_VALUES,
+    PROGRESS_SLOTS,
     PROTOCOL_VERSION,
     UNPAIR_COMMAND_TYPE,
     VALUE_SLOTS,
@@ -660,6 +661,35 @@ def normalize_state(
     }
 
 
+def normalize_progress(
+    state: Any,
+    *,
+    minimum: Any,
+    maximum: Any,
+) -> dict[str, Any] | None:
+    """Normalize one numeric entity into a bounded progress payload."""
+    minimum_number = optional_number(minimum)
+    maximum_number = optional_number(maximum)
+    if (
+        minimum_number is None
+        or maximum_number is None
+        or maximum_number <= minimum_number
+    ):
+        return None
+    raw_state = getattr(state, "state", None)
+    value = optional_number(raw_state)
+    valid = (
+        raw_state not in ("unknown", "unavailable", None)
+        and value is not None
+    )
+    return {
+        "valid": valid,
+        "value": value if valid else None,
+        "min": minimum_number,
+        "max": maximum_number,
+    }
+
+
 def normalize_content(
     hass: Any,
     content: Mapping[str, Any],
@@ -670,17 +700,33 @@ def normalize_content(
     result: dict[str, Any] = {}
     for slot in VALUE_SLOTS:
         selection = content.get(slot, {})
-        if not isinstance(selection, Mapping) or not selection.get("entity_id"):
-            result[slot] = {"valid": False, "display_value": None}
-            continue
-        state = hass.states.get(selection["entity_id"])
-        result[slot] = normalize_state(
-            state,
-            configured_type=str(selection.get("type", "auto")),
-            label=selection.get("label"),
-            decimals=max(0, min(3, int(selection.get("decimals", 1)))),
-            unit=selection.get("unit"),
-        )
+        if not isinstance(selection, Mapping):
+            selection = {}
+        entity_id = selection.get("entity_id")
+        if entity_id:
+            state = hass.states.get(entity_id)
+            slot_payload = normalize_state(
+                state,
+                configured_type=str(selection.get("type", "auto")),
+                label=selection.get("label"),
+                decimals=max(0, min(3, int(selection.get("decimals", 1)))),
+                unit=selection.get("unit"),
+            )
+        else:
+            slot_payload = {"valid": False, "display_value": None}
+
+        progress_selection = selection.get("progress")
+        if slot in PROGRESS_SLOTS and isinstance(progress_selection, Mapping):
+            progress_entity_id = progress_selection.get("entity_id")
+            if progress_entity_id:
+                progress = normalize_progress(
+                    hass.states.get(progress_entity_id),
+                    minimum=progress_selection.get("min"),
+                    maximum=progress_selection.get("max"),
+                )
+                if progress is not None:
+                    slot_payload["progress"] = progress
+        result[slot] = slot_payload
 
     weather_id = content.get("weather") if show_weather else None
     weather_state = hass.states.get(weather_id) if isinstance(weather_id, str) else None

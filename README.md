@@ -63,6 +63,12 @@ selectors, automatic device-class detection, numeric or text/state type override
 places, and an optional unit override. The display never receives HA `entity_id`
 values and never queries HA entities itself.
 
+The second and third values can each use an independent numeric Home Assistant
+entity as a progress source with configurable minimum and maximum. Two-value layouts
+render the second progress vertically; three-value layouts render the second and
+third progress horizontally. A progress source alone never creates an additional
+main value or changes the selected layout.
+
 When a weather entity is configured, the display exposes a per-device
 **Show weather** switch. Turning it off keeps the selected entity configured but
 suppresses weather content in subsequent check-ins; turning it on restores delivery.
